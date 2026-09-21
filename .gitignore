@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.wrangler/
+.worker-build/
+.env
+.env.local
+.dev.vars
+coverage/
+test-results/
+.DS_Store
