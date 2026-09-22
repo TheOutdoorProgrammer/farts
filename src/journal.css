@@ -262,7 +262,8 @@ pre:focus-visible {
   border: 1px solid #a6c1a344;
   border-radius: 4px;
 }
-.spectrogram-plot:focus-within {
+.spectrogram-plot:focus-within,
+.waveform:focus-within {
   outline: 3px solid var(--leaf);
   outline-offset: 3px;
 }
@@ -280,7 +281,11 @@ pre:focus-visible {
   background-size: 25% 25%;
   pointer-events: none;
 }
-.spectrogram-playhead {
+.seek-overlay {
+  position: absolute;
+  inset: 0;
+}
+.visualization-playhead {
   position: absolute;
   width: 2px;
   inset-block: 0;
@@ -289,22 +294,32 @@ pre:focus-visible {
   transform: translateX(-1px);
   pointer-events: none;
 }
-.spectrogram-seek {
+.visualization-playhead:before {
+  content: '';
+  display: block;
+  width: 10px;
+  height: 10px;
+  background: #fffcea;
+  border-radius: 0 0 4px 4px;
+  transform: translateX(-4px);
+}
+.visualization-seek {
   appearance: none;
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   opacity: 0;
-  cursor: crosshair;
+  cursor: ew-resize;
+  touch-action: none;
   margin: 0;
 }
-.spectrogram-seek::-webkit-slider-thumb {
+.visualization-seek::-webkit-slider-thumb {
   appearance: none;
   width: 1px;
   height: 180px;
 }
-.spectrogram-seek::-moz-range-thumb {
+.visualization-seek::-moz-range-thumb {
   width: 1px;
   height: 180px;
   border: 0;

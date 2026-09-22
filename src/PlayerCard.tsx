@@ -13,6 +13,7 @@ import { clock, recordingDate, recordingTime } from './format';
 import type { Player } from './usePlayer';
 import type { Recording } from './types';
 import { Spectrogram } from './Spectrogram';
+import { SeekOverlay } from './SeekOverlay';
 
 export function PhotoCredit({ recording }: { recording: Recording }) {
   if (!recording.imageCredit) return null;
@@ -50,9 +51,11 @@ export function PhotoCredit({ recording }: { recording: Recording }) {
 export function PlayerCard({
   player,
   onShare,
+  elementRef,
 }: {
   player: Player;
   onShare: (recording: Recording, audio?: boolean) => void;
+  elementRef?: (element: HTMLElement | null) => void;
 }) {
   const { recording, prepared, playing, loading, time } = player;
   const [visualization, setVisualization] = useState<
@@ -71,7 +74,12 @@ export function PlayerCard({
     );
   const progress = prepared ? time / prepared.duration : 0;
   return (
-    <section className="player-card" aria-label="Recording player">
+    <section
+      ref={elementRef}
+      className="player-card"
+      id={`recording-player-${recording.id}`}
+      aria-label="Recording player"
+    >
       <div className="player-content">
         <div className="eyebrow">
           <span
@@ -178,17 +186,29 @@ export function PlayerCard({
             onSeek={player.seek}
           />
         ) : (
-          <div className="waveform" aria-hidden="true">
+          <div className="waveform">
             {prepared ? (
-              prepared.waveform.map((value, index) => (
-                <span
-                  key={index}
-                  className={
-                    index / prepared.waveform.length <= progress ? 'heard' : ''
-                  }
-                  style={{ height: `${Math.max(5, value * 100)}%` }}
+              <>
+                <div className="waveform-bars" aria-hidden="true">
+                  {prepared.waveform.map((value, index) => (
+                    <span
+                      key={index}
+                      className={
+                        index / prepared.waveform.length <= progress
+                          ? 'heard'
+                          : ''
+                      }
+                      style={{ height: `${Math.max(5, value * 100)}%` }}
+                    />
+                  ))}
+                </div>
+                <SeekOverlay
+                  time={time}
+                  duration={prepared.duration}
+                  label="Waveform position"
+                  onSeek={player.seek}
                 />
-              ))
+              </>
             ) : (
               <div
                 className={
@@ -204,20 +224,16 @@ export function PlayerCard({
             )}
           </div>
         )}
-        <div className="scrubber-row">
+        <div className="playback-time">
           <span>{clock(time)}</span>
-          <input
-            aria-label="Recording position"
-            type="range"
-            min="0"
-            max={prepared?.duration || 1}
-            step="0.01"
-            value={time}
-            disabled={!prepared}
-            onChange={(event) => player.seek(Number(event.target.value))}
-          />
+          <span>{prepared ? 'Drag the playhead to explore' : ''}</span>
           <span>{prepared ? clock(prepared.duration) : '–:––'}</span>
         </div>
+        {prepared && prepared.listeningGainDb >= 3 && (
+          <p className="mode-note">
+            Listening volume boosted. Original recording preserved.
+          </p>
+        )}
         {recording.classification === 'bat' && (
           <p className="mode-note">
             {player.mode === 'bat'
@@ -285,20 +301,24 @@ export function PlayerCard({
 export function MiniPlayer({
   player,
   onShare,
+  playerElement,
 }: {
   player: Player;
   onShare: (recording: Recording) => void;
+  playerElement: HTMLElement | null;
 }) {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
-    const card = document.querySelector('.player-card');
-    if (!card) return;
+    if (!playerElement) {
+      setVisible(true);
+      return;
+    }
     const observer = new IntersectionObserver(([entry]) =>
       setVisible(!entry.isIntersecting),
     );
-    observer.observe(card);
+    observer.observe(playerElement);
     return () => observer.disconnect();
-  }, [player.recording?.id]);
+  }, [playerElement]);
   if (!visible || !player.recording || (!player.prepared && !player.loading))
     return null;
   return (

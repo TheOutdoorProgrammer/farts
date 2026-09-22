@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef } from 'react';
 import type { Spectrogram as SpectrogramData } from './types';
+import { SeekOverlay } from './SeekOverlay';
 
 const colors = [
   [7, 24, 26],
@@ -109,21 +110,12 @@ export function Spectrogram({
             aria-describedby={descriptionId}
           />
           <div className="spectrogram-grid" aria-hidden="true" />
-          <span
-            className="spectrogram-playhead"
-            style={{ left: `${progress * 100}%` }}
-            aria-hidden="true"
-          />
-          <input
-            className="spectrogram-seek"
-            type="range"
-            min="0"
-            max={playbackDuration}
-            step={playbackDuration / 1000}
-            value={time}
-            aria-label="Spectrogram position"
-            aria-valuetext={`${seconds(progress * data.duration)} into the original recording`}
-            onChange={(event) => onSeek(Number(event.target.value))}
+          <SeekOverlay
+            time={time}
+            duration={playbackDuration}
+            label="Spectrogram position"
+            valueText={`${seconds(progress * data.duration)} into the original recording`}
+            onSeek={onSeek}
           />
         </div>
         <div className="spectrogram-time" aria-hidden="true">

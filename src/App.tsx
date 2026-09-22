@@ -110,6 +110,7 @@ export function App() {
 function StationApp({ config }: { config: RuntimeConfig }) {
   const { route, navigate } = useRoute();
   const player = usePlayer(config.stationName);
+  const [playerElement, setPlayerElement] = useState<HTMLElement | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState('');
@@ -362,15 +363,20 @@ function StationApp({ config }: { config: RuntimeConfig }) {
                   Browse recordings
                 </button>
               </section>
-            ) : (
-              <PlayerCard player={player} onShare={showShare} />
-            )}
+            ) : detailId ? (
+              <PlayerCard
+                player={player}
+                onShare={showShare}
+                elementRef={setPlayerElement}
+              />
+            ) : null}
             {!detailId && (
               <RecordingFeed
                 route={route}
                 navigate={navigate}
                 player={player}
                 onShare={showShare}
+                playerRef={setPlayerElement}
               />
             )}
           </>
@@ -421,7 +427,11 @@ function StationApp({ config }: { config: RuntimeConfig }) {
         preload="none"
         aria-label="Recording audio"
       />
-      <MiniPlayer player={player} onShare={showShare} />
+      <MiniPlayer
+        player={player}
+        onShare={showShare}
+        playerElement={playerElement}
+      />
       {share && (
         <ShareDialog
           key={share.recording.id}

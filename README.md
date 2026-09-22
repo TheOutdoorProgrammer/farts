@@ -61,6 +61,10 @@ The volume contains `archive.db` (bbolt indexes) and content-addressed files in 
 
 FLAC decoding preserves the original sample rate in a browser worker. Bat mode expands time by 10x before resampling, bringing ultrasonic calls into hearing range. Playback and shareable exports use 48 kHz, 16-bit WAV. Original FLAC downloads preserve uploaded audio. Detection offsets are used when supplied; otherwise the full stored soundscape plays.
 
+Listening copies adjust volume toward a -3 dBFS peak, with a maximum 60 dB boost. Silence, DC offsets and signals below the noise-floor guard are not amplified. The player indicates boosted volume; original downloads and spectrogram measurements stay unchanged.
+
+Selecting a recording opens its player directly beneath that journal entry. Each entry also links to its own recording page. Drag or tap the playhead on either the spectrogram or waveform to seek; the same control supports keyboard arrows, Home and End.
+
 The player shows a spectrogram computed from the original samples, with recorded time and frequency axes. Bat plots preserve ultrasonic frequencies even during slowed playback. Color represents signal amplitude in dBFS, not calibrated sound pressure. Switch to the waveform for a simpler view.
 
 BirdWeather supplies identification, confidence, bat behavior and candidate species. Candidates are possibilities, not confirmed sightings. Species photos retain supplied attribution and licenses. PUC readings and external weather data are separate sources.
@@ -71,7 +75,7 @@ The family pages show recordings, statistics, species, activity and station cond
 
 The public API is read-only and station-scoped. It does not accept arbitrary GraphQL, upstream URLs, other stations, uploads or configuration writes. Species reference data is limited to this station's species. Precise locations are hidden by default. Live subscriptions and private-station GraphQL authentication are not advertised as supported.
 
-Share links use `/recordings/<detection-id>` with server-rendered Open Graph and Twitter cards showing the species, station, and recording date in the station's timezone. Station pages have their own preview cards, and page selections have shareable URLs. Set `FARTS_PUBLIC_URL` to your public origin so messaging apps can fetch the images without running JavaScript.
+Share links use `/recordings/<detection-id>` with server-rendered Open Graph and Twitter cards showing the species, station, and recording date in the station's timezone. Cards and journal entries use credited species photos when available. Station cards choose a photographed species observed by that station. Station pages have their own preview cards, and page selections have shareable URLs. Set `FARTS_PUBLIC_URL` to your public origin so messaging apps can fetch the images without running JavaScript.
 
 ## Configuration
 

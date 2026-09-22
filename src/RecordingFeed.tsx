@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { fetchFeed } from './api';
+import { PhotoCredit, PlayerCard } from './PlayerCard';
 import {
   recordingDate,
   recordingLength,
@@ -30,11 +31,13 @@ export function RecordingFeed({
   navigate,
   player,
   onShare,
+  playerRef,
 }: {
   route: Route;
   navigate: (changes: Partial<Route>, replace?: boolean) => void;
   player: Player;
-  onShare: (recording: Recording) => void;
+  onShare: (recording: Recording, audio?: boolean) => void;
+  playerRef?: (element: HTMLElement | null) => void;
 }) {
   const [feed, setFeed] = useState<Feed | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,8 +46,7 @@ export function RecordingFeed({
   const [refresh, setRefresh] = useState(0);
   const [advanced, setAdvanced] = useState(!!(route.from || route.to));
   const moreRequest = useRef<AbortController | null>(null);
-  const initialSelection = useRef(false);
-  const { classification, query, speciesId, from, to, detailId } = route;
+  const { classification, query, speciesId, from, to } = route;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -66,17 +68,6 @@ export function RecordingFeed({
           .then((result) => {
             if (controller.signal.aborted) return;
             setFeed(result);
-            if (
-              !initialSelection.current &&
-              !detailId &&
-              result.recordings.length
-            ) {
-              initialSelection.current = true;
-              player.select(
-                result.recordings.find((recording) => recording.audioUrl) ||
-                  result.recordings[0],
-              );
-            }
           })
           .catch((error) => {
             if (!controller.signal.aborted)
@@ -96,16 +87,7 @@ export function RecordingFeed({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [
-    classification,
-    query,
-    speciesId,
-    from,
-    to,
-    refresh,
-    detailId,
-    player.select,
-  ]);
+  }, [classification, query, speciesId, from, to, refresh]);
   useEffect(() => () => moreRequest.current?.abort(), []);
 
   const loadMore = async () => {
@@ -263,71 +245,102 @@ export function RecordingFeed({
               {feed.recordings.map((recording, index) => {
                 const active = player.recording?.id === recording.id;
                 return (
-                  <li
-                    className={`recording-row${active ? ' active' : ''}`}
-                    key={recording.id}
-                  >
-                    <span className="row-number" aria-hidden="true">
-                      {String(index + 1).padStart(2, '0')}
-                    </span>
-                    <button
-                      className="row-play"
-                      onClick={() => play(recording)}
-                      disabled={
-                        !recording.audioUrl || (active && player.loading)
-                      }
-                      aria-label={`${active && player.playing ? 'Pause' : 'Play'} ${recording.commonName} at ${recordingTime(recording.timestamp)}`}
-                    >
-                      <Bird size={24} />
-                      <span>
-                        {active && player.loading ? (
-                          <LoaderCircle className="spin" size={18} />
-                        ) : active && player.playing ? (
-                          <Pause size={18} fill="currentColor" />
-                        ) : (
-                          <Play size={18} fill="currentColor" />
-                        )}
+                  <li className="recording-item" key={recording.id}>
+                    <div className={`recording-row${active ? ' active' : ''}`}>
+                      <span className="row-number" aria-hidden="true">
+                        {String(index + 1).padStart(2, '0')}
                       </span>
-                    </button>
-                    <div className="row-description">
                       <button
-                        className="recording-title"
+                        className="row-play"
+                        aria-expanded={active}
+                        aria-controls={
+                          active
+                            ? `recording-player-${recording.id}`
+                            : undefined
+                        }
                         onClick={() => play(recording)}
                         disabled={
                           !recording.audioUrl || (active && player.loading)
                         }
+                        aria-label={`${active && player.playing ? 'Pause' : 'Play'} ${recording.commonName} at ${recordingTime(recording.timestamp)}`}
                       >
-                        {recording.commonName}
-                        {active && player.playing && <AudioLines size={15} />}
+                        {recording.imageUrl ? (
+                          <img src={recording.imageUrl} alt="" loading="lazy" />
+                        ) : (
+                          <Bird size={24} />
+                        )}
+                        <span>
+                          {active && player.loading ? (
+                            <LoaderCircle className="spin" size={18} />
+                          ) : active && player.playing ? (
+                            <Pause size={18} fill="currentColor" />
+                          ) : (
+                            <Play size={18} fill="currentColor" />
+                          )}
+                        </span>
                       </button>
-                      <span>
-                        {recordingDate(recording.timestamp)} <b>·</b>{' '}
-                        {recordingTime(recording.timestamp)} <b>·</b>{' '}
-                        {recording.audioUrl
-                          ? recordingLength(recording)
-                          : 'Audio unavailable'}
+                      <div className="row-description">
+                        <button
+                          className="recording-title"
+                          aria-expanded={active}
+                          aria-controls={
+                            active
+                              ? `recording-player-${recording.id}`
+                              : undefined
+                          }
+                          onClick={() => play(recording)}
+                          disabled={
+                            !recording.audioUrl || (active && player.loading)
+                          }
+                        >
+                          {recording.commonName}
+                          {active && player.playing && <AudioLines size={15} />}
+                        </button>
+                        <span>
+                          {recordingDate(recording.timestamp)} <b>·</b>{' '}
+                          {recordingTime(recording.timestamp)} <b>·</b>{' '}
+                          {recording.audioUrl
+                            ? recordingLength(recording)
+                            : 'Audio unavailable'}
+                        </span>
+                        <a
+                          className="recording-link"
+                          href={`/recordings/${recording.id}`}
+                        >
+                          Open recording
+                        </a>
+                        {recording.imageUrl && (
+                          <PhotoCredit recording={recording} />
+                        )}
+                      </div>
+                      <span
+                        className={`classification ${recording.classification}`}
+                      >
+                        {recording.classification === 'bat'
+                          ? 'Bat'
+                          : recording.classification === 'bird'
+                            ? 'Bird'
+                            : 'Wildlife'}
                       </span>
+                      <span className="confidence">
+                        {Math.round(recording.confidence * 100)}%
+                        <span>confidence</span>
+                      </span>
+                      <button
+                        className="row-share icon-button"
+                        onClick={() => onShare(recording)}
+                        aria-label={`Share ${recording.commonName} at ${recordingTime(recording.timestamp)}`}
+                      >
+                        <Share2 size={18} />
+                      </button>
                     </div>
-                    <span
-                      className={`classification ${recording.classification}`}
-                    >
-                      {recording.classification === 'bat'
-                        ? 'Bat'
-                        : recording.classification === 'bird'
-                          ? 'Bird'
-                          : 'Wildlife'}
-                    </span>
-                    <span className="confidence">
-                      {Math.round(recording.confidence * 100)}%
-                      <span>confidence</span>
-                    </span>
-                    <button
-                      className="row-share icon-button"
-                      onClick={() => onShare(recording)}
-                      aria-label={`Share ${recording.commonName} at ${recordingTime(recording.timestamp)}`}
-                    >
-                      <Share2 size={18} />
-                    </button>
+                    {active && (
+                      <PlayerCard
+                        player={player}
+                        onShare={onShare}
+                        elementRef={playerRef}
+                      />
+                    )}
                   </li>
                 );
               })}

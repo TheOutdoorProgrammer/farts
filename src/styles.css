@@ -346,20 +346,23 @@ a {
 }
 .waveform {
   height: 56px;
+  position: relative;
+  margin-top: 22px;
+}
+.waveform-bars {
+  height: 100%;
   display: flex;
   align-items: center;
   gap: 3px;
-  margin-top: 22px;
   overflow: hidden;
 }
-.waveform > span {
+.waveform-bars > span {
   flex: 1;
   min-width: 1px;
-  max-width: 5px;
   background: #80996e;
   border-radius: 2px;
 }
-.waveform > span.heard {
+.waveform-bars > span.heard {
   background: var(--leaf);
 }
 .waveform-await {
@@ -380,7 +383,7 @@ a {
 .waveform-await.loading {
   animation: fade 1.4s ease-in-out infinite alternate;
 }
-.scrubber-row {
+.playback-time {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -388,25 +391,11 @@ a {
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
   color: #c4d6b1;
+  justify-content: space-between;
 }
-.scrubber-row input {
-  appearance: none;
-  background: #6a806744;
-  width: 100%;
-  height: 3px;
-  cursor: pointer;
-  accent-color: var(--leaf);
-}
-.scrubber-row input::-webkit-slider-thumb {
-  appearance: none;
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: var(--leaf);
-}
-.scrubber-row input:disabled {
-  opacity: 0.4;
-  cursor: default;
+.playback-time > span:nth-child(2) {
+  font-size: 0.65rem;
+  text-align: center;
 }
 .player-actions {
   display: flex;
@@ -662,6 +651,23 @@ a {
   background: #e9eddf;
   border-radius: 9px;
   border-color: transparent;
+}
+.recording-item > .player-card {
+  margin: 8px 0 20px;
+}
+.recording-link {
+  font-size: 0.75rem;
+  color: var(--forest);
+  text-underline-offset: 3px;
+  width: fit-content;
+}
+.row-description .photo-credit {
+  position: static;
+  font-size: 0.65rem;
+  overflow-wrap: anywhere;
+}
+.row-description .photo-credit a {
+  text-decoration-color: currentColor;
 }
 .row-number {
   font-size: 0.75rem;
