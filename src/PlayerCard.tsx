@@ -6,14 +6,32 @@ import {
   LoaderCircle,
   Pause,
   Play,
+  Radio,
   Share2,
   Volume2,
 } from 'lucide-react';
-import { clock, recordingDate, recordingTime } from './format';
+import { certaintyLabel, clock, recordingDate, recordingTime } from './format';
 import type { Player } from './usePlayer';
-import type { Recording } from './types';
+import type { ListeningMode, Recording } from './types';
 import { Spectrogram } from './Spectrogram';
 import { SeekOverlay } from './SeekOverlay';
+
+const modeLabels: Record<ListeningMode, string> = {
+  bat: 'Slowed 10×',
+  realtime: 'Real time',
+  natural: 'Original',
+};
+const modeNotes: Record<ListeningMode, string> = {
+  bat: 'Slowed 10× so ultrasonic calls become audible.',
+  realtime:
+    'Regular speed. Frequencies divided by 10, the way a handheld bat detector works.',
+  natural:
+    'Original timing and pitch. Ultrasonic bat calls are outside human hearing.',
+};
+
+export function modePrefix(mode: ListeningMode) {
+  return mode === 'natural' ? '' : `${modeLabels[mode]} · `;
+}
 
 export function PhotoCredit({ recording }: { recording: Recording }) {
   if (!recording.imageCredit) return null;
@@ -48,6 +66,55 @@ export function PhotoCredit({ recording }: { recording: Recording }) {
   );
 }
 
+function percent(value: number | null | undefined) {
+  return typeof value === 'number' ? `${Math.round(value * 100)}%` : null;
+}
+
+export function RecordingFacts({ recording }: { recording: Recording }) {
+  const facts: [string, string | null][] = [
+    ['Certainty', certaintyLabel(recording.certainty)],
+    ['Probability', percent(recording.probability)],
+    [
+      'Score',
+      typeof recording.score === 'number' ? recording.score.toFixed(2) : null,
+    ],
+    [
+      'Behavior',
+      recording.behavior
+        ? recording.behaviorConfidence !== null &&
+          recording.behaviorConfidence !== undefined
+          ? `${recording.behavior} (${percent(recording.behaviorConfidence)})`
+          : recording.behavior
+        : null,
+    ],
+    [
+      'Sample rate',
+      recording.sampleRate ? `${recording.sampleRate / 1000} kHz` : null,
+    ],
+    [
+      'Soundscape',
+      typeof recording.duration === 'number'
+        ? `${recording.duration.toFixed(1)} s`
+        : null,
+    ],
+    ['Model', recording.algorithm ?? null],
+    ['Detection', recording.id],
+  ];
+  return (
+    <dl className="recording-facts" aria-label="Recording details">
+      {facts.map(
+        ([label, value]) =>
+          value && (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ),
+      )}
+    </dl>
+  );
+}
+
 export function PlayerCard({
   player,
   onShare,
@@ -73,6 +140,7 @@ export function PlayerCard({
       </section>
     );
   const progress = prepared ? time / prepared.duration : 0;
+  const bars = prepared?.waveform.length ?? 0;
   return (
     <section
       ref={elementRef}
@@ -111,6 +179,9 @@ export function PlayerCard({
                 ? 'Bird'
                 : 'Wildlife'}
           </span>
+          {recording.behavior && (
+            <span className="behavior">{recording.behavior}</span>
+          )}
         </div>
         {recording.classification === 'bat' && (
           <div
@@ -118,18 +189,21 @@ export function PlayerCard({
             role="group"
             aria-label="Bat listening mode"
           >
-            <button
-              aria-pressed={player.mode === 'bat'}
-              onClick={() => void player.listen(undefined, 'bat')}
-            >
-              <Headphones size={15} /> Bat listening
-            </button>
-            <button
-              aria-pressed={player.mode === 'natural'}
-              onClick={() => void player.listen(undefined, 'natural')}
-            >
-              <Volume2 size={15} /> Natural sound
-            </button>
+            {(
+              [
+                ['bat', Headphones],
+                ['realtime', Radio],
+                ['natural', Volume2],
+              ] as const
+            ).map(([value, Icon]) => (
+              <button
+                key={value}
+                aria-pressed={player.mode === value}
+                onClick={() => void player.listen(undefined, value)}
+              >
+                <Icon size={15} /> {modeLabels[value]}
+              </button>
+            ))}
           </div>
         )}
         <div className="player-actions">
@@ -189,19 +263,26 @@ export function PlayerCard({
           <div className="waveform">
             {prepared ? (
               <>
-                <div className="waveform-bars" aria-hidden="true">
-                  {prepared.waveform.map((value, index) => (
-                    <span
-                      key={index}
-                      className={
-                        index / prepared.waveform.length <= progress
-                          ? 'heard'
-                          : ''
-                      }
-                      style={{ height: `${Math.max(5, value * 100)}%` }}
-                    />
-                  ))}
-                </div>
+                <svg
+                  className="waveform-bars"
+                  viewBox={`0 0 ${bars} 100`}
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  {prepared.waveform.map((value, index) => {
+                    const height = Math.max(4, value * 100);
+                    return (
+                      <rect
+                        key={index}
+                        x={index + 0.2}
+                        width={0.6}
+                        y={(100 - height) / 2}
+                        height={height}
+                        className={index / bars <= progress ? 'heard' : ''}
+                      />
+                    );
+                  })}
+                </svg>
                 <SeekOverlay
                   time={time}
                   duration={prepared.duration}
@@ -235,11 +316,7 @@ export function PlayerCard({
           </p>
         )}
         {recording.classification === 'bat' && (
-          <p className="mode-note">
-            {player.mode === 'bat'
-              ? 'Slowed 10× so ultrasonic calls become audible.'
-              : 'Original timing. Ultrasonic bat calls are outside human hearing.'}
-          </p>
+          <p className="mode-note">{modeNotes[player.mode]}</p>
         )}
         {player.notice && (
           <p className="player-notice" role="status">
@@ -270,6 +347,7 @@ export function PlayerCard({
             </ul>
           )}
         </details>
+        <RecordingFacts recording={recording} />
       </div>
       <div className="player-image">
         {recording.imageUrl ? (
@@ -338,7 +416,7 @@ export function MiniPlayer({
         <div>
           <strong>{player.recording.commonName}</strong>
           <span>
-            {player.mode === 'bat' ? 'Bat listening · ' : ''}
+            {modePrefix(player.mode)}
             {clock(player.time)} /{' '}
             {player.prepared ? clock(player.prepared.duration) : 'Loading'}
           </span>

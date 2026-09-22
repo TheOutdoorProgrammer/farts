@@ -345,25 +345,21 @@ a {
   display: none;
 }
 .waveform {
-  height: 56px;
+  --seek-height: 56px;
+  height: var(--seek-height);
   position: relative;
   margin-top: 22px;
 }
 .waveform-bars {
+  display: block;
+  width: 100%;
   height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  overflow: hidden;
 }
-.waveform-bars > span {
-  flex: 1;
-  min-width: 1px;
-  background: #80996e;
-  border-radius: 2px;
+.waveform-bars rect {
+  fill: #80996e;
 }
-.waveform-bars > span.heard {
-  background: var(--leaf);
+.waveform-bars rect.heard {
+  fill: var(--leaf);
 }
 .waveform-await {
   display: flex;
@@ -751,6 +747,45 @@ a {
   color: #695381;
   background: #eeeaf333;
 }
+.behavior {
+  display: inline-block;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #695381;
+  background: #e9e3f1;
+}
+.recording-meta .behavior {
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  color: #e8dcff;
+  background: #4e3c6a;
+}
+.recording-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 12px 18px;
+  margin: 18px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid #ffffff18;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: #c0d0b8;
+}
+.recording-facts dt {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.62rem;
+  color: #93a98c;
+}
+.recording-facts dd {
+  margin: 2px 0 0;
+  color: #eaf1e3;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
 .confidence {
   font-size: 0.875rem;
   color: #3c5447;
@@ -1107,7 +1142,7 @@ a {
     padding: 36px 42px;
   }
   .waveform {
-    height: 66px;
+    --seek-height: 66px;
   }
 }
 @media (max-width: 1280px) {
@@ -1281,7 +1316,7 @@ a {
     margin-top: 13px;
   }
   .waveform {
-    height: 49px;
+    --seek-height: 49px;
     margin-top: 18px;
   }
   .scrubber-row {
@@ -1344,13 +1379,20 @@ a {
     margin-top: 17px;
   }
   .recording-row {
-    grid-template-columns: 46px minmax(0, 1fr) 36px;
-    gap: 12px;
+    grid-template-columns: 46px minmax(0, 1fr) 44px 36px;
+    gap: 10px;
     padding: 15px 4px;
   }
   .row-number,
-  .classification,
+  .classification {
+    display: none;
+  }
   .confidence {
+    font-size: 0.8rem;
+    text-align: right;
+    gap: 1px;
+  }
+  .confidence > span {
     display: none;
   }
   .row-play {

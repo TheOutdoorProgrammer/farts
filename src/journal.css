@@ -264,8 +264,9 @@ pre:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 .spectrogram-plot {
+  --seek-height: 180px;
   position: relative;
-  height: 180px;
+  height: var(--seek-height);
   overflow: hidden;
   border: 1px solid #a6c1a344;
   border-radius: 4px;
@@ -322,14 +323,15 @@ pre:focus-visible {
   touch-action: none;
   margin: 0;
 }
+/* A thumb taller than its track hangs over the buttons above and steals their taps. */
 .visualization-seek::-webkit-slider-thumb {
   appearance: none;
   width: 1px;
-  height: 180px;
+  height: var(--seek-height);
 }
 .visualization-seek::-moz-range-thumb {
   width: 1px;
-  height: 180px;
+  height: var(--seek-height);
   border: 0;
 }
 .spectrogram-time {
@@ -1034,7 +1036,7 @@ td {
     width: 44px;
   }
   .recording-row {
-    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    grid-template-columns: 44px minmax(0, 1fr) 42px 44px;
     gap: 9px;
   }
   .row-play {
