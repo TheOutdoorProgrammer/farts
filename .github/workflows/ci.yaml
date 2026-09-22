@@ -68,8 +68,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Scan runtime image
-        uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
+          version: v0.74.0
           image-ref: farts:scan
           format: table
           exit-code: '1'
