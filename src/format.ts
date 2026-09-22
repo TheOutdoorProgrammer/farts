@@ -50,6 +50,21 @@ export function recordingLength(recording: Recording) {
     : 'Full recording';
 }
 
+const certaintyLabels: Record<string, string> = {
+  almost_certain: 'Almost certain',
+  very_likely: 'Very likely',
+  uncertain: 'Uncertain',
+  unlikely: 'Unlikely',
+};
+export function certaintyLabel(certainty: string | null | undefined) {
+  if (!certainty) return null;
+  const words = certainty.replaceAll('_', ' ').trim();
+  return (
+    certaintyLabels[certainty] ??
+    (words ? words[0].toUpperCase() + words.slice(1) : null)
+  );
+}
+
 export function audioFilename(recording: Recording, bat: boolean) {
   const name = recording.commonName
     .toLowerCase()

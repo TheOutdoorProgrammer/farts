@@ -31,6 +31,16 @@ function text(value: unknown, fallback = ''): string {
   return typeof value === 'string' && value.length <= 4096 ? value : fallback;
 }
 
+function nonnegative(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+function unitInterval(value: unknown): number | null {
+  const number = nonnegative(value);
+  return number !== null && number <= 1 ? number : null;
+}
+
 export function safeLink(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   try {
@@ -74,6 +84,21 @@ export function parseRecording(value: unknown): Recording {
       : 'other';
   recording.scientificName = text(data.scientificName);
   recording.speciesId = text(data.speciesId);
+  recording.behavior = text(data.behavior) || null;
+  recording.behaviorCode = text(data.behaviorCode) || null;
+  recording.certainty = text(data.certainty) || null;
+  recording.algorithm = text(data.algorithm) || null;
+  recording.probability = unitInterval(data.probability);
+  recording.behaviorConfidence = unitInterval(data.behaviorConfidence);
+  recording.score = nonnegative(data.score);
+  recording.duration = nonnegative(data.duration);
+  recording.sampleRate =
+    Number.isInteger(data.sampleRate) && (data.sampleRate as number) > 0
+      ? (data.sampleRate as number)
+      : null;
+  recording.soundscapeId = /^[1-9]\d{0,19}$/.test(text(data.soundscapeId))
+    ? text(data.soundscapeId)
+    : null;
   if (
     !recording.audioUrl ||
     typeof data.startTime !== 'number' ||
@@ -164,6 +189,8 @@ export async function fetchFeed(options: FeedOptions = {}): Promise<Feed> {
     const value = options[key];
     if (value) params.set(key, value);
   }
+  // Upstream defaults to recent detections; the journal pages through everything.
+  if (!options.from && !options.to) params.set('period', 'all');
   const data = object(await requestJson(`/api/feed?${params}`, options.signal));
   if (!Array.isArray(data.recordings) || data.recordings.length > 100)
     invalid();

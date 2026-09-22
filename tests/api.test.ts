@@ -74,6 +74,66 @@ describe('local station API', () => {
       credentials: 'same-origin',
     });
   });
+  it('asks for the whole station history unless dates narrow the journal', async () => {
+    reply(feed());
+    await fetchFeed({ classification: 'bird' });
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      '/api/feed?classification=bird&period=all',
+    );
+    reply(feed());
+    await fetchFeed({ to: '2026-09-15' });
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/feed?to=2026-09-15');
+  });
+  it('keeps the identification facts BirdWeather supplies and drops invalid ones', async () => {
+    reply(
+      feed([
+        {
+          ...detection(),
+          behavior: 'Feeding Buzz',
+          behaviorCode: 'bat_feeding_buzz',
+          behaviorConfidence: 1,
+          certainty: 'almost_certain',
+          probability: 1,
+          score: 9.17,
+          algorithm: 'v58.131.306.g2.db11',
+          duration: 6.0002,
+          sampleRate: 250000,
+          soundscapeId: '17035820785',
+        },
+      ]),
+    );
+    expect((await fetchFeed()).recordings[0]).toMatchObject({
+      behavior: 'Feeding Buzz',
+      behaviorCode: 'bat_feeding_buzz',
+      behaviorConfidence: 1,
+      certainty: 'almost_certain',
+      probability: 1,
+      score: 9.17,
+      algorithm: 'v58.131.306.g2.db11',
+      duration: 6.0002,
+      sampleRate: 250000,
+      soundscapeId: '17035820785',
+    });
+    reply(
+      feed([
+        {
+          ...detection(),
+          behaviorConfidence: 1.5,
+          probability: -1,
+          score: 'high',
+          sampleRate: 0,
+          soundscapeId: '../1',
+        },
+      ]),
+    );
+    expect((await fetchFeed()).recordings[0]).toMatchObject({
+      behaviorConfidence: null,
+      probability: null,
+      score: null,
+      sampleRate: null,
+      soundscapeId: null,
+    });
+  });
   it.each([
     'https://media.birdweather.com/soundscapes/1/a.flac',
     '//evil.test/a',

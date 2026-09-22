@@ -16,6 +16,7 @@ import {
 import { fetchFeed } from './api';
 import { PhotoCredit, PlayerCard } from './PlayerCard';
 import {
+  certaintyLabel,
   recordingDate,
   recordingLength,
   recordingTime,
@@ -302,6 +303,15 @@ export function RecordingFeed({
                           {recording.audioUrl
                             ? recordingLength(recording)
                             : 'Audio unavailable'}
+                          {recording.behavior && (
+                            <>
+                              {' '}
+                              <b>·</b>{' '}
+                              <span className="behavior">
+                                {recording.behavior}
+                              </span>
+                            </>
+                          )}
                         </span>
                         <a
                           className="recording-link"
@@ -322,9 +332,14 @@ export function RecordingFeed({
                             ? 'Bird'
                             : 'Wildlife'}
                       </span>
-                      <span className="confidence">
+                      <span
+                        className="confidence"
+                        title={certaintyLabel(recording.certainty) ?? undefined}
+                      >
                         {Math.round(recording.confidence * 100)}%
-                        <span>confidence</span>
+                        <span>
+                          {certaintyLabel(recording.certainty) ?? 'confidence'}
+                        </span>
                       </span>
                       <button
                         className="row-share icon-button"
