@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { prepareAudio } from './audio';
+import { silentClip } from './audio/silence';
 import { reportError } from './telemetry';
 import type { ListeningMode, PreparedAudio, Recording } from './types';
+
+type Source = 'none' | 'unlock' | 'prepared';
 
 export function usePlayer(stationName = 'Wildlife station') {
   const audioRef = useRef<HTMLAudioElement>(null);
   const requestRef = useRef<AbortController | null>(null);
   const objectUrl = useRef<string | null>(null);
+  const unlockUrl = useRef<string | null>(null);
+  const unlocked = useRef(false);
+  const sourceRef = useRef<Source>('none');
   const preparedRef = useRef<{ key: string; audio: PreparedAudio } | null>(
     null,
   );
@@ -25,6 +31,7 @@ export function usePlayer(stationName = 'Wildlife station') {
     requestRef.current?.abort();
     audioRef.current?.pause();
     audioRef.current?.removeAttribute('src');
+    sourceRef.current = 'none';
     if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
     objectUrl.current = null;
     preparedRef.current = null;
@@ -38,6 +45,20 @@ export function usePlayer(stationName = 'Wildlife station') {
     setLoading(false);
     setTime(0);
     setNotice('');
+  }, []);
+
+  const unlock = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio || unlocked.current) return;
+    unlockUrl.current ??= URL.createObjectURL(silentClip);
+    sourceRef.current = 'unlock';
+    audio.src = unlockUrl.current;
+    audio.play().then(
+      () => {
+        unlocked.current = true;
+      },
+      () => {},
+    );
   }, []);
 
   const playNative = useCallback(async () => {
@@ -79,6 +100,7 @@ export function usePlayer(stationName = 'Wildlife station') {
       requestRef.current?.abort();
       const controller = new AbortController();
       requestRef.current = controller;
+      unlock();
       setLoading(true);
       setNotice('');
       setPrepared(null);
@@ -96,6 +118,7 @@ export function usePlayer(stationName = 'Wildlife station') {
         setPrepared(result);
         const audio = audioRef.current;
         if (audio) {
+          sourceRef.current = 'prepared';
           audio.src = objectUrl.current;
           audio.load();
           if ('mediaSession' in navigator) {
@@ -117,7 +140,7 @@ export function usePlayer(stationName = 'Wildlife station') {
         if (!controller.signal.aborted) setLoading(false);
       }
     },
-    [select, playNative, stationName],
+    [select, unlock, playNative, stationName],
   );
 
   const toggle = () => {
@@ -147,6 +170,7 @@ export function usePlayer(stationName = 'Wildlife station') {
     () => () => {
       requestRef.current?.abort();
       if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
+      if (unlockUrl.current) URL.revokeObjectURL(unlockUrl.current);
     },
     [],
   );
@@ -165,6 +189,8 @@ export function usePlayer(stationName = 'Wildlife station') {
     };
   }, [playNative]);
 
+  const isPrepared = () => sourceRef.current === 'prepared';
+
   return {
     audioRef,
     recording,
@@ -180,11 +206,20 @@ export function usePlayer(stationName = 'Wildlife station') {
     seek,
     getPrepared,
     audioEvents: {
-      onPlay: () => setPlaying(true),
-      onPause: () => setPlaying(false),
-      onEnded: () => setPlaying(false),
-      onTimeUpdate: () => setTime(audioRef.current?.currentTime ?? 0),
+      onPlay: () => {
+        if (isPrepared()) setPlaying(true);
+      },
+      onPause: () => {
+        if (isPrepared()) setPlaying(false);
+      },
+      onEnded: () => {
+        if (isPrepared()) setPlaying(false);
+      },
+      onTimeUpdate: () => {
+        if (isPrepared()) setTime(audioRef.current?.currentTime ?? 0);
+      },
       onError: () => {
+        if (!isPrepared()) return;
         setPlaying(false);
         setNotice(
           'The audio player hit a problem. Reload the recording to try again.',

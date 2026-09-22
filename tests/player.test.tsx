@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prepareAudio } from '../src/audio';
+import { silentClip } from '../src/audio/silence';
 import { usePlayer, type Player } from '../src/usePlayer';
 import type { PreparedAudio, Recording } from '../src/types';
 
@@ -48,6 +49,12 @@ function prepared(duration: number): PreparedAudio {
     },
   };
 }
+
+const preparedUrls = () =>
+  vi
+    .mocked(URL.createObjectURL)
+    .mock.calls.map(([blob]) => blob)
+    .filter((blob) => blob !== silentClip);
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -107,9 +114,13 @@ describe('player request lifecycle', () => {
   it('keeps prepared audio when the browser requires a second tap to start playback', async () => {
     const audio = prepared(10);
     prepare.mockResolvedValueOnce(audio);
-    vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValueOnce(
-      new DOMException('User activation required', 'NotAllowedError'),
-    );
+    const denied = () =>
+      Promise.reject(
+        new DOMException('User activation required', 'NotAllowedError'),
+      );
+    vi.mocked(HTMLMediaElement.prototype.play)
+      .mockImplementationOnce(denied)
+      .mockImplementationOnce(denied);
     await act(async () => {
       await player.listen(recording);
     });
@@ -123,7 +134,7 @@ describe('player request lifecycle', () => {
     expect(player.notice).toBe('');
     expect(player.playing).toBe(true);
     expect(prepare).toHaveBeenCalledOnce();
-    expect(URL.createObjectURL).toHaveBeenCalledOnce();
+    expect(preparedUrls()).toEqual([audio.blob]);
     expect(
       await player.getPrepared(recording, new AbortController().signal),
     ).toBe(audio);
@@ -168,7 +179,7 @@ describe('player request lifecycle', () => {
     expect(player.mode).toBe('bat');
     expect(player.prepared).toBe(bat);
     expect(player.audioRef.current!.src).toBe(originalSource);
-    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(preparedUrls()).toEqual([bat.blob]);
     expect(prepare).toHaveBeenCalledTimes(2);
   });
 
@@ -206,7 +217,7 @@ describe('player request lifecycle', () => {
     expect(player.recording).toBe(nextRecording);
     expect(player.prepared).toBeNull();
     expect(player.loading).toBe(true);
-    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(preparedUrls()).toEqual([]);
 
     const nextAudio = prepared(2);
     await act(async () => {
@@ -218,6 +229,37 @@ describe('player request lifecycle', () => {
     expect(player.mode).toBe('natural');
     expect(player.loading).toBe(false);
     expect(player.playing).toBe(true);
-    expect(URL.createObjectURL).toHaveBeenCalledExactlyOnceWith(nextAudio.blob);
+    expect(preparedUrls()).toEqual([nextAudio.blob]);
+  });
+
+  it('plays a silent clip inside the tap so the element can start after decoding', async () => {
+    const request = deferred<PreparedAudio>();
+    prepare.mockReturnValueOnce(request.promise);
+    const play = vi.mocked(HTMLMediaElement.prototype.play);
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = player.listen(recording);
+    });
+    expect(play).toHaveBeenCalledOnce();
+    expect(URL.createObjectURL).toHaveBeenCalledWith(silentClip);
+    expect(player.playing).toBe(false);
+    expect(player.loading).toBe(true);
+
+    const audio = prepared(4);
+    await act(async () => {
+      request.resolve(audio);
+      await pending;
+    });
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(player.playing).toBe(true);
+    expect(player.audioRef.current!.src).toBe('blob:prepared-2');
+
+    const next = prepared(2);
+    prepare.mockResolvedValueOnce(next);
+    await act(async () => {
+      await player.listen({ ...recording, id: '102' });
+    });
+    expect(play).toHaveBeenCalledTimes(3);
+    expect(preparedUrls()).toEqual([audio.blob, next.blob]);
   });
 });
