@@ -187,3 +187,84 @@ func TestClassificationChartFilteringRecalculatesDailyTotals(t *testing.T) {
 		t.Fatalf("missing classification silently accepted: %v", err)
 	}
 }
+
+func TestIncompleteSavedPhotoMetadataUsesGraphQLWithoutChangingSnapshots(t *testing.T) {
+	for _, failFallback := range []bool{false, true} {
+		t.Run(map[bool]string{false: "enriched", true: "fallback unavailable"}[failFallback], func(t *testing.T) {
+			detection := detectionFixture()
+			delete(detection["species"].(map[string]any), "imageCredit")
+			detection["soundscape"] = nil
+			original := response(map[string]any{"success": true, "detection": detection})
+			originalBytes := string(original.Body)
+			transport := &testTransport{handler: func(_ context.Context, req Request) (Response, error) {
+				switch req.Operation {
+				case "rest:detections":
+					return original, nil
+				case "rest:species":
+					species := speciesFixture()
+					delete(species, "imageCredit")
+					return response(map[string]any{"success": true, "species": species}), nil
+				case "graphql:species-details":
+					if failFallback {
+						return Response{}, errors.New("reference unavailable")
+					}
+					return graphqlFixture(req), nil
+				case "graphql:detections":
+					return response(map[string]any{"data": map[string]any{"detections": pageFixture([]any{detection}, false)}}), nil
+				}
+				return graphqlFixture(req), nil
+			}}
+			client := New("30605", transport)
+			result, err := client.Recording(context.Background(), "11279085131")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var recording Recording
+			_ = json.Unmarshal(result.Body, &recording)
+			if failFallback != (recording.ImageURL == nil) {
+				t.Fatalf("unexpected fallback photo: %+v", recording)
+			}
+			if !failFallback && (recording.ImageCredit == nil || *recording.ImageCredit != "An Author") {
+				t.Fatal("fallback attribution missing")
+			}
+			if string(original.Body) != originalBytes || strings.Contains(string(recording.Raw), "An Author") {
+				t.Fatal("original snapshot was rewritten")
+			}
+			feedResponse, err := client.Feed(context.Background(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var feed Feed
+			_ = json.Unmarshal(feedResponse.Body, &feed)
+			if len(feed.Recordings) != 1 || failFallback != (feed.Recordings[0].ImageURL == nil) {
+				t.Fatalf("feed attribution fallback missing: %+v", feed)
+			}
+			fallbackCalls := 0
+			for _, request := range transport.calls {
+				if request.Operation == "graphql:species-details" {
+					fallbackCalls++
+					if !request.Immutable {
+						t.Fatal("reference snapshot policy changed")
+					}
+				}
+			}
+			if fallbackCalls != 2 {
+				t.Fatalf("expected one fallback per incomplete result, got %d", fallbackCalls)
+			}
+		})
+	}
+}
+
+func TestCompletePhotoMetadataDoesNotRequestAnotherSource(t *testing.T) {
+	transport := &testTransport{handler: func(_ context.Context, req Request) (Response, error) {
+		if req.Operation == "rest:species" {
+			return response(map[string]any{"success": true, "species": speciesFixture()}), nil
+		}
+		t.Errorf("complete photo made another request: %s", req.Operation)
+		return Response{}, errors.New("unexpected request")
+	}}
+	photos, _ := New("30605", transport).photoMetadata(context.Background(), []string{"17662"})
+	if len(photos) != 1 || len(transport.calls) != 1 {
+		t.Fatal("complete photo was not retained")
+	}
+}

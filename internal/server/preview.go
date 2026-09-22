@@ -10,6 +10,8 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	_ "image/gif"
+	_ "image/jpeg"
 	"image/png"
 	"io"
 	"net/http"
@@ -24,12 +26,15 @@ import (
 
 	"github.com/TheOutdoorProgrammer/farts/internal/config"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	imagedraw "golang.org/x/image/draw"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 	"golang.org/x/image/vector"
+	_ "golang.org/x/image/webp"
 )
 
 const brandExpansion = "Flying Animal Recon and Telemetry Service"
@@ -39,6 +44,8 @@ type preview struct {
 	Station, Heading, Scientific, Detail, Label       string
 	Timestamp                                         string
 	Recording                                         bool
+	Photo                                             image.Image
+	PhotoName, PhotoCredit, PhotoLicense              string
 }
 
 var (
@@ -248,7 +255,16 @@ func (s *Server) previewImage(w http.ResponseWriter, r *http.Request) {
 		}
 		pageRequest.URL.Path = "/recordings/" + id
 	}
-	data, err := renderPreview(s.preview(pageRequest, recording))
+	p := s.preview(pageRequest, recording)
+	photoContext, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	if recording != nil {
+		s.previewPhoto(photoContext, &p, recording)
+	} else {
+		s.stationPreviewPhoto(photoContext, &p, pageRequest.URL.Query())
+	}
+	span.SetAttributes(attribute.Bool("preview.has_photo", p.Photo != nil))
+	data, err := renderPreview(p)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -261,6 +277,85 @@ func (s *Server) previewImage(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "farts-preview.png", time.Time{}, bytes.NewReader(data))
 }
 
+func (s *Server) stationPreviewPhoto(ctx context.Context, p *preview, query url.Values) {
+	params := url.Values{"limit": {"8"}, "period": {"all"}}
+	filtered := canonicalQuery(query)
+	if id := filtered.Get("speciesId"); id != "" {
+		params.Set("speciesId", id)
+	}
+	switch filtered.Get("classification") {
+	case "bird":
+		params.Set("classifications", "avian")
+	case "bat":
+		params.Set("classifications", "bat")
+	}
+	response, err := s.api.SpeciesRanking(ctx, params)
+	if err != nil {
+		return
+	}
+	var ranks []struct {
+		Species map[string]any `json:"species"`
+	}
+	if json.Unmarshal(response.Body, &ranks) != nil || len(ranks) > 8 {
+		return
+	}
+	for _, rank := range ranks {
+		if ctx.Err() != nil || s.previewPhoto(ctx, p, rank.Species) {
+			return
+		}
+	}
+}
+
+func (s *Server) previewPhoto(ctx context.Context, p *preview, source map[string]any) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	credit, license := previewString(source, "imageCredit"), previewString(source, "imageLicense")
+	imageURL := previewString(source, "imageUrl")
+	if credit == "" || license == "" || imageURL == "" {
+		return false
+	}
+	body, err := json.Marshal(map[string]string{"imageUrl": imageURL})
+	if err != nil {
+		return false
+	}
+	body, err = s.upstream.Rewrite(body, false)
+	var rewritten map[string]string
+	if err != nil || json.Unmarshal(body, &rewritten) != nil || !strings.HasPrefix(rewritten["imageUrl"], "/media/") {
+		return false
+	}
+	id := strings.TrimPrefix(rewritten["imageUrl"], "/media/")
+	registered, err := s.store.Media(id)
+	if err != nil || registered.Kind != "image" {
+		return false
+	}
+	media, err := s.upstream.Media(ctx, id)
+	if err != nil || media.Size > 8<<20 {
+		return false
+	}
+	file, err := s.store.OpenObject(media.Hash)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	info, format, err := image.DecodeConfig(io.LimitReader(file, 8<<20))
+	if err != nil || info.Width < 1 || info.Height < 1 || info.Width > 4096 || info.Height > 4096 || int64(info.Width)*int64(info.Height) > 8_000_000 {
+		return false
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return false
+	}
+	photo, decodedFormat, err := image.Decode(io.LimitReader(file, 8<<20))
+	if err != nil || decodedFormat != format || photo.Bounds().Dx() != info.Width || photo.Bounds().Dy() != info.Height {
+		return false
+	}
+	p.Photo = photo
+	p.PhotoName = previewString(source, "commonName")
+	p.PhotoCredit = credit
+	p.PhotoLicense = license
+	return true
+}
+
 func renderPreview(p preview) ([]byte, error) {
 	canvas := image.NewRGBA(image.Rect(0, 0, 1200, 630))
 	forest := color.RGBA{18, 56, 45, 255}
@@ -268,8 +363,12 @@ func renderPreview(p preview) ([]byte, error) {
 	leaf := color.RGBA{217, 237, 146, 255}
 	muted := color.RGBA{192, 210, 181, 255}
 	draw.Draw(canvas, canvas.Bounds(), image.NewUniform(forest), image.Point{}, draw.Src)
-	draw.Draw(canvas, image.Rect(872, 0, 1200, 630), image.NewUniform(paper), image.Point{}, draw.Src)
-	draw.Draw(canvas, image.Rect(64, 127, 808, 129), image.NewUniform(color.RGBA{65, 95, 72, 255}), image.Point{}, draw.Src)
+	panel, textWidth := 872, 744
+	if p.Photo != nil {
+		panel, textWidth = 636, 508
+	}
+	draw.Draw(canvas, image.Rect(panel, 0, 1200, 630), image.NewUniform(paper), image.Point{}, draw.Src)
+	draw.Draw(canvas, image.Rect(64, 127, panel-64, 129), image.NewUniform(color.RGBA{65, 95, 72, 255}), image.Point{}, draw.Src)
 	faces := map[int]font.Face{}
 	defer func() {
 		for _, face := range faces {
@@ -299,17 +398,21 @@ func renderPreview(p preview) ([]byte, error) {
 			drawer.DrawString(line)
 		}
 	}
-	text("FARTS.", 64, 87, 48, 744, 1, true, paper)
-	text("Flying Animal Recon", 294, 65, 18, 480, 1, false, muted)
-	text("and Telemetry Service", 294, 91, 18, 480, 1, false, muted)
-	text(p.Label, 64, 180, 19, 744, 1, true, leaf)
-	text(p.Heading, 60, 262, 61, 744, 2, true, paper)
+	text("FARTS.", 64, 87, 48, textWidth, 1, true, paper)
+	text("Flying Animal Recon", 294, 65, 18, panel-320, 1, false, muted)
+	text("and Telemetry Service", 294, 91, 18, panel-320, 1, false, muted)
+	text(p.Label, 64, 180, 19, textWidth, 1, true, leaf)
+	headingSize := 61
+	if p.Photo != nil {
+		headingSize = 54
+	}
+	text(p.Heading, 60, 262, headingSize, textWidth, 2, true, paper)
 	if p.Recording {
-		text(p.Scientific, 64, 388, 25, 744, 1, false, muted)
-		text(p.Station, 64, 435, 25, 744, 1, true, paper)
-		text(p.Detail, 64, 472, 23, 744, 1, false, muted)
+		text(p.Scientific, 64, 388, 25, textWidth, 1, false, muted)
+		text(p.Station, 64, 435, 25, textWidth, 1, true, paper)
+		text(p.Detail, 64, 472, 23, textWidth, 1, false, muted)
 	} else {
-		text(p.Description, 64, 390, 27, 730, 2, false, muted)
+		text(p.Description, 64, 390, 27, textWidth, 3, false, muted)
 	}
 	draw.Draw(canvas, image.Rect(64, 523, 371, 579), image.NewUniform(leaf), image.Point{}, draw.Src)
 	callToAction := "Explore the wild"
@@ -317,14 +420,33 @@ func renderPreview(p preview) ([]byte, error) {
 		callToAction = "Listen to this call"
 	}
 	text(callToAction, 86, 560, 24, 269, 1, true, forest)
-	text("GOOD CALLS.", 910, 91, 23, 252, 1, true, forest)
-	text("Questionable acronym.", 910, 125, 16, 252, 1, false, forest)
-	previewMark(canvas, 923, 219, forest, leaf)
-	text("WILDLIFE", 910, 516, 25, 252, 1, true, forest)
-	text("worth sharing.", 910, 552, 25, 252, 1, false, forest)
+	if p.Photo != nil {
+		previewPhotograph(canvas, p.Photo, image.Rect(panel, 0, 1200, 510))
+		text(p.PhotoName, panel+24, 545, 21, 516, 1, true, forest)
+		text("Photo: "+p.PhotoCredit, panel+24, 575, 14, 516, 2, false, forest)
+		text(p.PhotoLicense, panel+24, 616, 13, 516, 1, false, forest)
+	} else {
+		text("GOOD CALLS.", 910, 91, 23, 252, 1, true, forest)
+		text("Questionable acronym.", 910, 125, 16, 252, 1, false, forest)
+		previewMark(canvas, 923, 219, forest, leaf)
+		text("WILDLIFE", 910, 516, 25, 252, 1, true, forest)
+		text("worth sharing.", 910, 552, 25, 252, 1, false, forest)
+	}
 	var output bytes.Buffer
 	err := png.Encode(&output, canvas)
 	return output.Bytes(), err
+}
+
+func previewPhotograph(canvas *image.RGBA, photo image.Image, frame image.Rectangle) {
+	width, height := frame.Dx(), frame.Dy()
+	bounds := photo.Bounds()
+	if bounds.Dx()*height > bounds.Dy()*width {
+		height = max(1, bounds.Dy()*width/bounds.Dx())
+	} else {
+		width = max(1, bounds.Dx()*height/bounds.Dy())
+	}
+	x, y := frame.Min.X+(frame.Dx()-width)/2, frame.Min.Y+(frame.Dy()-height)/2
+	imagedraw.CatmullRom.Scale(canvas, image.Rect(x, y, x+width, y+height), photo, bounds, draw.Over, nil)
 }
 
 func previewLines(value string, face font.Face, width, limit int) []string {

@@ -438,42 +438,50 @@ func (c *Client) Recording(ctx context.Context, id string) (Response, error) {
 	type enrichment struct {
 		kind     string
 		response Response
+		photo    *upstreamSpecies
+		parts    []Response
 		err      error
 	}
 	results := make(chan enrichment, 2)
-	go func() {
-		result, err := c.REST(ctx, "species", recording.SpeciesID, nil)
-		results <- enrichment{"species", result, err}
-	}()
-	count := 1
+	count := 0
+	if recording.ImageURL == nil {
+		count++
+		go func() {
+			photos, parts := c.photoMetadata(ctx, []string{recording.SpeciesID})
+			result := enrichment{kind: "species", parts: parts}
+			if photo, exists := photos[recording.SpeciesID]; exists {
+				result.photo = &photo
+			}
+			results <- result
+		}()
+	}
 	if recording.SoundscapeID != nil {
 		count++
 		go func(soundscapeID string) {
 			result, err := c.REST(ctx, "soundscapes", soundscapeID, nil)
-			results <- enrichment{"soundscape", result, err}
+			results <- enrichment{kind: "soundscape", response: result, err: err}
 		}(*recording.SoundscapeID)
 	}
 	parts := []Response{response}
 	for range count {
 		result := <-results
+		if result.kind == "species" {
+			parts = append(parts, result.parts...)
+			if result.photo != nil {
+				setPhoto(&recording, *result.photo)
+			}
+			continue
+		}
 		if result.err != nil {
 			continue
 		}
 		parts = append(parts, result.response)
-		if result.kind == "species" {
-			data, err := rawField(result.response.Body, "species")
-			var species upstreamSpecies
-			if err == nil && json.Unmarshal(data, &species) == nil {
-				setPhoto(&recording, species)
-			}
-		} else {
-			data, err := rawField(result.response.Body, "soundscape")
-			var soundscape upstreamSoundscape
-			if err == nil && json.Unmarshal(data, &soundscape) == nil {
-				recording.Duration = nonnegative(soundscape.Duration)
-				if soundscape.SampleRate != nil && *soundscape.SampleRate > 0 && *soundscape.SampleRate <= 2000000 {
-					recording.SampleRate = soundscape.SampleRate
-				}
+		data, err := rawField(result.response.Body, "soundscape")
+		var soundscape upstreamSoundscape
+		if err == nil && json.Unmarshal(data, &soundscape) == nil {
+			recording.Duration = nonnegative(soundscape.Duration)
+			if soundscape.SampleRate != nil && *soundscape.SampleRate > 0 && *soundscape.SampleRate <= 2000000 {
+				recording.SampleRate = soundscape.SampleRate
 			}
 		}
 	}
@@ -509,10 +517,10 @@ func normalizeSpeciesPhotos(raw json.RawMessage) (json.RawMessage, error) {
 
 func (c *Client) photoMetadata(ctx context.Context, ids []string) (map[string]upstreamSpecies, []Response) {
 	type result struct {
-		id       string
-		species  upstreamSpecies
-		response Response
-		ok       bool
+		id      string
+		species upstreamSpecies
+		parts   []Response
+		ok      bool
 	}
 	unique := map[string]bool{}
 	for _, id := range ids {
@@ -528,10 +536,28 @@ func (c *Client) photoMetadata(ctx context.Context, ids []string) (map[string]up
 		go func() {
 			for id := range jobs {
 				response, err := c.REST(ctx, "species", id, nil)
-				item := result{id: id, response: response}
+				item := result{id: id}
 				if err == nil {
+					item.parts = append(item.parts, response)
 					raw, err := rawField(response.Body, "species")
 					item.ok = err == nil && json.Unmarshal(raw, &item.species) == nil
+				}
+				var photo Recording
+				setPhoto(&photo, item.species)
+				// Supplement older REST attribution without replacing its immutable snapshot.
+				if photo.ImageURL == nil && ctx.Err() == nil {
+					response, err := c.GraphQL(ctx, "species-details", url.Values{"speciesId": {id}})
+					if err == nil {
+						var candidate upstreamSpecies
+						raw, err := rawField(response.Body, "data", "species")
+						if err == nil && json.Unmarshal(raw, &candidate) == nil {
+							setPhoto(&photo, candidate)
+							if photo.ImageURL != nil || !item.ok {
+								item.species, item.ok = candidate, true
+							}
+							item.parts = append(item.parts, response)
+						}
+					}
 				}
 				results <- item
 			}
@@ -543,7 +569,7 @@ func (c *Client) photoMetadata(ctx context.Context, ids []string) (map[string]up
 		item := <-results
 		if item.ok {
 			photos[item.id] = item.species
-			responses = append(responses, item.response)
+			responses = append(responses, item.parts...)
 		}
 	}
 	return photos, responses
@@ -581,4 +607,23 @@ func (c *Client) enrichRankingPhotos(ctx context.Context, raw json.RawMessage) (
 		}
 	}
 	return json.Marshal(rankings)
+}
+
+func (c *Client) SpeciesRanking(ctx context.Context, params url.Values) (Response, error) {
+	response, err := c.GraphQL(ctx, "species", params)
+	if err != nil {
+		return Response{}, err
+	}
+	raw, err := rawField(response.Body, "data", "topSpecies")
+	if err != nil {
+		return Response{}, err
+	}
+	raw, err = c.enrichRankingPhotos(ctx, raw)
+	if err != nil {
+		return Response{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return Response{}, err
+	}
+	return encodeResponse(json.RawMessage(raw), response)
 }
