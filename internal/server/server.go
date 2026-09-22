@@ -4,16 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"html"
-	"io"
 	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -24,16 +20,17 @@ import (
 )
 
 type Server struct {
-	config      config.Config
-	store       *archive.Store
-	upstream    *upstream.Client
-	api         *birdweather.Client
-	concurrency chan struct{}
+	config             config.Config
+	store              *archive.Store
+	upstream           *upstream.Client
+	api                *birdweather.Client
+	concurrency        chan struct{}
+	previewConcurrency chan struct{}
 }
 
 func New(cfg config.Config, store *archive.Store) *Server {
 	client := upstream.New(store, cfg.StationID, cfg.StationToken, cfg.MaxMediaBytes)
-	return &Server{config: cfg, store: store, upstream: client, api: birdweather.New(cfg.StationID, client), concurrency: make(chan struct{}, 64)}
+	return &Server{config: cfg, store: store, upstream: client, api: birdweather.New(cfg.StationID, client), concurrency: make(chan struct{}, 64), previewConcurrency: make(chan struct{}, 2)}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -73,6 +70,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/", func(w http.ResponseWriter, r *http.Request) { jsonError(w, 404, "Unknown API operation.") })
 	mux.HandleFunc("GET /media/{id}", s.media)
 	mux.HandleFunc("GET /recordings/{id}", s.sharePage)
+	mux.HandleFunc("GET /og/station.png", s.previewImage)
+	mux.HandleFunc("GET /og/recordings/{id}", s.previewImage)
 	mux.HandleFunc("GET /", s.static)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.headers(w)
@@ -84,7 +83,7 @@ func (s *Server) Handler() http.Handler {
 			jsonError(w, 400, "GET requests must not include a body.")
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/media/") || strings.HasPrefix(r.URL.Path, "/recordings/") {
+		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/media/") || strings.HasPrefix(r.URL.Path, "/recordings/") || strings.HasPrefix(r.URL.Path, "/og/") {
 			select {
 			case s.concurrency <- struct{}{}:
 				defer func() { <-s.concurrency }()
@@ -122,9 +121,20 @@ func (s *Server) headers(w http.ResponseWriter) {
 }
 
 func (s *Server) configuration(w http.ResponseWriter, r *http.Request) {
+	name, zone := s.stationIdentity(r.Context())
+	if zone == "" {
+		zone = "UTC"
+	}
+	jsonResponse(w, 200, map[string]any{"name": "FARTS", "stationId": s.config.StationID, "stationName": name, "stationDescription": s.config.StationDescription, "timezone": zone, "version": s.config.Version, "faroUrl": s.config.FaroURL, "publicUrl": s.config.PublicURL, "exposeLocation": s.config.ExposeLocation})
+}
+
+func (s *Server) stationIdentity(ctx context.Context) (string, string) {
 	name := s.config.StationName
 	zone := s.config.Timezone
-	if response, err := s.api.GraphQL(r.Context(), "station", url.Values{}); err == nil {
+	if name != "" && zone != "" {
+		return name, zone
+	}
+	if response, err := s.api.GraphQL(ctx, "station", url.Values{}); err == nil {
 		var value map[string]any
 		if json.Unmarshal(response.Body, &value) == nil {
 			station := nestedStation(value)
@@ -139,10 +149,7 @@ func (s *Server) configuration(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "Our wildlife station"
 	}
-	if zone == "" {
-		zone = "UTC"
-	}
-	jsonResponse(w, 200, map[string]any{"name": "FARTS", "stationId": s.config.StationID, "stationName": name, "stationDescription": s.config.StationDescription, "timezone": zone, "version": s.config.Version, "faroUrl": s.config.FaroURL, "publicUrl": s.config.PublicURL, "exposeLocation": s.config.ExposeLocation})
+	return name, zone
 }
 
 func nestedStation(value map[string]any) map[string]any {
@@ -303,72 +310,6 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.html(w, r, nil)
-}
-
-func (s *Server) sharePage(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if !config.IDPattern.MatchString(id) {
-		http.NotFound(w, r)
-		return
-	}
-	response, err := s.api.Recording(r.Context(), id)
-	if err != nil {
-		s.html(w, r, nil)
-		return
-	}
-	body, err := s.upstream.Rewrite(response.Body, s.config.ExposeLocation)
-	if err != nil {
-		s.html(w, r, nil)
-		return
-	}
-	var recording map[string]any
-	if json.Unmarshal(body, &recording) != nil {
-		s.html(w, r, nil)
-		return
-	}
-	s.html(w, r, recording)
-}
-
-var titlePattern = regexp.MustCompile(`(?s)<title>.*?</title>`)
-var previewPattern = regexp.MustCompile(`(?i)<meta\s+[^>]*(?:property|name)=["'](?:og:[^"']*|twitter:[^"']*|description)["'][^>]*>`)
-
-func (s *Server) html(w http.ResponseWriter, r *http.Request, recording map[string]any) {
-	data, err := os.ReadFile(filepath.Join(s.config.WebDir, "index.html"))
-	if err != nil {
-		jsonError(w, 503, "The website assets are unavailable. Build the frontend first.")
-		return
-	}
-	name := s.config.StationName
-	if name == "" {
-		name = "Our wildlife station"
-	}
-	title := name + " · FARTS"
-	description := s.config.StationDescription
-	if description == "" {
-		description = "Listen to the birds and bats around our station. Discover and share a little of the wild."
-	}
-	imageURL := ""
-	if recording != nil {
-		if species, ok := recording["commonName"].(string); ok {
-			title = species + " · " + name
-			description = "Listen to " + species + ", recorded at " + name + "."
-		}
-		if image, ok := recording["imageUrl"].(string); ok && strings.HasPrefix(image, "/media/") {
-			imageURL = s.config.PublicURL + image
-		}
-	}
-	page := previewPattern.ReplaceAllString(string(data), "")
-	page = titlePattern.ReplaceAllStringFunc(page, func(string) string { return "<title>" + html.EscapeString(title) + "</title>" })
-	meta := fmt.Sprintf(`<meta name="description" content="%s"><meta property="og:title" content="%s"><meta property="og:description" content="%s"><meta property="og:type" content="website"><meta name="twitter:card" content="summary_large_image">`, html.EscapeString(description), html.EscapeString(title), html.EscapeString(description))
-	if s.config.PublicURL != "" {
-		meta += `<meta property="og:url" content="` + html.EscapeString(s.config.PublicURL+r.URL.EscapedPath()) + `">`
-	}
-	if imageURL != "" {
-		meta += `<meta property="og:image" content="` + html.EscapeString(imageURL) + `">`
-	}
-	page = strings.Replace(page, "</head>", meta+"</head>", 1)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = io.WriteString(w, page)
 }
 
 func jsonResponse(w http.ResponseWriter, status int, value any) {

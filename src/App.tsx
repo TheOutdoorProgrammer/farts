@@ -45,7 +45,7 @@ function Brand() {
       <span className="brand-expansion">
         Flying Animal Recon
         <br />
-        Telecommunication Service
+        and Telemetry Service
       </span>
     </a>
   );
@@ -459,8 +459,8 @@ function StationApp({ config }: { config: RuntimeConfig }) {
           <p className="eyebrow">Yes, we know.</p>
           <h2 id="about-title">FARTS. For the family.</h2>
           <p>
-            <strong>Flying Animal Recon Telecommunication Service.</strong> A
-            home for the birds, bats, and recordings from {config.stationName}.
+            <strong>Flying Animal Recon and Telemetry Service.</strong> A home
+            for the birds, bats, and recordings from {config.stationName}.
           </p>
           <p>
             Recordings and automatic identifications come from BirdWeather.

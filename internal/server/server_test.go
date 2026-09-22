@@ -33,7 +33,7 @@ func testServer(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
-	return New(config.Config{StationID: "42", StationName: `Owls & <b>Bats</b>`, PublicURL: "https://recordings.example.com", WebDir: web, MaxMediaBytes: 1024}, store)
+	return New(config.Config{StationID: "42", StationName: `Owls & <b>Bats</b>`, Timezone: "UTC", PublicURL: "https://recordings.example.com", WebDir: web, MaxMediaBytes: 1024}, store)
 }
 
 func TestRoutesHeadersAndNoPublicWrites(t *testing.T) {

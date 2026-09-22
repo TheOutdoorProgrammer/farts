@@ -1,6 +1,6 @@
 apiVersion: v2
 name: farts
-description: Flying Animal Recon Telecommunication Service for a BirdWeather station.
+description: Flying Animal Recon and Telemetry Service for a BirdWeather station.
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

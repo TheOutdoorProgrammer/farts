@@ -24,7 +24,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags=
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 ARG VERSION=development
 LABEL org.opencontainers.image.title="FARTS" \
-      org.opencontainers.image.description="Flying Animal Recon Telecommunication Service" \
+      org.opencontainers.image.description="Flying Animal Recon and Telemetry Service" \
       org.opencontainers.image.source="https://github.com/TheOutdoorProgrammer/farts" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="$VERSION" \
