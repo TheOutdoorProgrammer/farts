@@ -25,6 +25,7 @@ import { StationConditions } from './StationConditions';
 import { initializeTelemetry, reportError } from './telemetry';
 import { usePlayer } from './usePlayer';
 import { useRoute, type Period, type View } from './useRoute';
+import { useVersionWatch } from './useVersionWatch';
 import type { Dashboard, Recording, RuntimeConfig } from './types';
 
 const views = [
@@ -110,6 +111,10 @@ export function App() {
 function StationApp({ config }: { config: RuntimeConfig }) {
   const { route, navigate } = useRoute();
   const player = usePlayer(config.stationName);
+  const updateAvailable = useVersionWatch(
+    config.version,
+    player.playing || player.loading,
+  );
   const [playerElement, setPlayerElement] = useState<HTMLElement | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
@@ -269,6 +274,17 @@ function StationApp({ config }: { config: RuntimeConfig }) {
         {shareNotice && (
           <p className="share-view-notice" role="status">
             {shareNotice}
+          </p>
+        )}
+        {updateAvailable && (
+          <p className="status-note update-note" role="status">
+            A newer FARTS is live.{' '}
+            <button
+              className="text-button"
+              onClick={() => window.location.reload()}
+            >
+              Reload when you’re ready
+            </button>
           </p>
         )}
         <nav className="section-nav" aria-label="Station sections">

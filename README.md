@@ -65,6 +65,8 @@ Listening copies adjust volume toward a -3 dBFS peak, with a maximum 60 dB boost
 
 Selecting a recording opens its player directly beneath that journal entry. Each entry also links to its own recording page. Drag or tap the playhead on either the spectrogram or waveform to seek; the same control supports keyboard arrows, Home and End.
 
+The tap that selects a recording also plays a silent clip through the audio element, because Safari only lets an element start outside a gesture once it has played inside one, and decoding takes longer than the tap. When a tab returns to the foreground it compares its build with the running release and reloads itself, or offers a reload while a recording is playing, so a phone tab left open does not keep showing an old version.
+
 The player shows a spectrogram computed from the original samples, with recorded time and frequency axes. Bat plots preserve ultrasonic frequencies even during slowed playback. Color represents signal amplitude in dBFS, not calibrated sound pressure. Switch to the waveform for a simpler view.
 
 BirdWeather supplies identification, confidence, bat behavior and candidate species. Candidates are possibilities, not confirmed sightings. Species photos retain supplied attribution and licenses. PUC readings and external weather data are separate sources.

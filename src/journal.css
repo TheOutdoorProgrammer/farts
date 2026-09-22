@@ -193,6 +193,14 @@ pre:focus-visible {
   padding: 10px 13px;
   margin: 12px 0;
 }
+.update-note .text-button {
+  display: inline;
+  padding: 0;
+  min-height: 0;
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .player-card {
   box-shadow: 0 16px 34px #233b2110;
 }
