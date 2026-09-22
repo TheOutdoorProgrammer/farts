@@ -20,6 +20,7 @@ class TestWorker {
         duration: 1,
         sourceDuration: 1,
         sampleRate: 48_000,
+        listeningGainDb: 30,
         waveform: [1],
         spectrogram: {
           width: 1,
@@ -58,6 +59,7 @@ describe('audio worker lifecycle', () => {
     TestWorker.instances[0].succeed();
     const audio = await first;
     expect(audio.blob.type).toBe('audio/wav');
+    expect(audio.listeningGainDb).toBe(30);
     expect(audio.spectrogram.maxFrequency).toBe(24_000);
     expect(audio.spectrogram.data).toEqual(new Uint8Array([128]));
     expect(TestWorker.instances[0].terminate).toHaveBeenCalledOnce();

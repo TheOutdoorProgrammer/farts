@@ -147,6 +147,7 @@ export interface PreparedAudio {
   duration: number;
   sourceDuration: number;
   sampleRate: number;
+  listeningGainDb: number;
   waveform: number[];
   spectrogram: Spectrogram;
 }

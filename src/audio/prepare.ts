@@ -1,6 +1,7 @@
 import { FLACDecoder, type FLACDecodedAudio } from '@wasm-audio-decoders/flac';
 import { localMedia } from '../media';
 import type { AudioRequest } from './protocol';
+import { normalizeListening } from './listening';
 import { createSpectrogram } from './spectrogram';
 import {
   clipPcm,
@@ -61,12 +62,14 @@ export async function decodeRecording(
       request.endTime,
     );
     const pcm = preparePcm(source, request.mode, null, null);
+    const listening = normalizeListening(pcm.channelData);
     return {
-      wav: encodeWav(pcm.channelData, pcm.sampleRate),
+      wav: encodeWav(listening.channelData, pcm.sampleRate),
       duration: pcm.duration,
       sourceDuration: pcm.sourceDuration,
       sampleRate: pcm.sampleRate,
-      waveform: waveform(pcm.channelData),
+      listeningGainDb: listening.listeningGainDb,
+      waveform: waveform(listening.channelData),
       spectrogram: createSpectrogram(source.channelData, source.sampleRate),
     };
   } finally {

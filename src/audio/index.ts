@@ -47,6 +47,7 @@ function startNext() {
         duration: response.duration,
         sourceDuration: response.sourceDuration,
         sampleRate: response.sampleRate,
+        listeningGainDb: response.listeningGainDb,
         waveform: response.waveform,
         spectrogram: response.spectrogram,
       });

@@ -35,6 +35,7 @@ function prepared(duration: number): PreparedAudio {
     duration,
     sourceDuration: 1,
     sampleRate: 48_000,
+    listeningGainDb: 20,
     waveform: [0.5],
     spectrogram: {
       width: 1,
@@ -103,6 +104,31 @@ afterEach(async () => {
 });
 
 describe('player request lifecycle', () => {
+  it('keeps prepared audio when the browser requires a second tap to start playback', async () => {
+    const audio = prepared(10);
+    prepare.mockResolvedValueOnce(audio);
+    vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValueOnce(
+      new DOMException('User activation required', 'NotAllowedError'),
+    );
+    await act(async () => {
+      await player.listen(recording);
+    });
+    expect(player.notice).toContain('Tap Play');
+    expect(player.playing).toBe(false);
+    expect(player.loading).toBe(false);
+    expect(player.prepared).toBe(audio);
+    await act(async () => {
+      await player.listen();
+    });
+    expect(player.notice).toBe('');
+    expect(player.playing).toBe(true);
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(URL.createObjectURL).toHaveBeenCalledOnce();
+    expect(
+      await player.getPrepared(recording, new AbortController().signal),
+    ).toBe(audio);
+  });
+
   it('resumes prepared bat audio and discards a pending natural-mode result', async () => {
     const bat = prepared(10);
     prepare.mockResolvedValueOnce(bat);
