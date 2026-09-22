@@ -47,7 +47,7 @@ jobs:
             GOOS=linux GOARCH="$arch" "$(go env GOPATH)/bin/govulncheck" ./...
           done
       - run: helm lint charts/farts --strict --set station.id=30605
-      - run: helm template farts charts/farts --set station.id=30605 --set ingress.enabled=true --set ingress.host=recordings.example.com > /tmp/farts.yaml
+      - run: node scripts/check-chart-labels.mjs
       - run: FARTS_STATION_ID=30605 docker compose config --quiet
       - name: Build release artifacts without publishing
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94

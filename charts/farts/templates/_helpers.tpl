@@ -12,7 +12,8 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{- define "farts.labels" -}}
+{{- $chart := printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 -}}
 {{ include "farts.selectorLabels" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
-helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
+helm.sh/chart: {{ regexReplaceAll "[-_.]+$" $chart "" | quote }}
 {{- end -}}
