@@ -125,7 +125,12 @@ export function usePlayer(stationName = 'Wildlife station') {
             navigator.mediaSession.metadata = new MediaMetadata({
               title: target.commonName,
               artist: stationName,
-              album: targetMode === 'bat' ? 'FARTS · Bat listening' : 'FARTS',
+              album:
+                targetMode === 'bat'
+                  ? 'FARTS · Slowed 10×'
+                  : targetMode === 'realtime'
+                    ? 'FARTS · Real time'
+                    : 'FARTS',
             });
           }
           await playNative();

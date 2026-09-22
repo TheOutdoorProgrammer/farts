@@ -181,9 +181,66 @@ export function clipPcm(
   };
 }
 
+export const DIVISION_FACTOR = 10;
+
+// Zero-crossing frequency division, the way a handheld bat detector keeps
+// ultrasonic calls in real time: a square wave whose amplitude follows the
+// call's envelope flips twice per output cycle, so every factor/2 upward
+// crossings.
+export function divideFrequency(
+  input: Float32Array,
+  sampleRate: number,
+  factor = DIVISION_FACTOR,
+): Float32Array {
+  if (
+    !input.length ||
+    !Number.isFinite(sampleRate) ||
+    sampleRate <= 0 ||
+    !Number.isInteger(factor) ||
+    factor < 2 ||
+    factor % 2
+  )
+    throw new Error('Invalid frequency division input.');
+  const flipEvery = factor / 2;
+  const highPass = 1 / (1 + 2 * Math.PI * 12_000 * (1 / sampleRate));
+  const filtered = new Float32Array(input.length);
+  let previousInput = 0;
+  let previousOutput = 0;
+  let peak = 0;
+  for (let index = 0; index < input.length; index++) {
+    const sample = Number.isFinite(input[index]) ? input[index] : 0;
+    previousOutput = highPass * (previousOutput + sample - previousInput);
+    previousInput = sample;
+    filtered[index] = previousOutput;
+    peak = Math.max(peak, Math.abs(previousOutput));
+  }
+  const output = new Float32Array(input.length);
+  if (!peak) return output;
+  const gate = peak * 0.08;
+  const decay = Math.exp(-1 / (sampleRate * 0.002));
+  let envelope = 0;
+  let crossings = 0;
+  let polarity = 1;
+  for (let index = 0; index < filtered.length; index++) {
+    envelope = Math.max(Math.abs(filtered[index]), envelope * decay);
+    if (envelope <= gate) {
+      crossings = 0;
+      continue;
+    }
+    if (index > 0 && filtered[index - 1] < 0 && filtered[index] >= 0) {
+      crossings++;
+      if (crossings % flipEvery === 0) polarity = -polarity;
+    }
+    output[index] = polarity * envelope;
+  }
+  return output;
+}
+
+export type ProcessingMode = 'natural' | 'bat' | 'realtime';
+
 export function preparePcm(
   audio: PcmAudio,
-  mode: 'natural' | 'bat',
+  mode: ProcessingMode,
   start: number | null,
   end: number | null,
 ) {
@@ -194,7 +251,13 @@ export function preparePcm(
     throw new Error('This recording is too long for 10× bat playback.');
   // Expand at the original rate before filtering: downsampling first would erase the bat calls.
   const channels = source.channelData.map((channel) =>
-    resample(channel, source.sampleRate / expansion, OUTPUT_SAMPLE_RATE),
+    resample(
+      mode === 'realtime'
+        ? divideFrequency(channel, source.sampleRate)
+        : channel,
+      source.sampleRate / expansion,
+      OUTPUT_SAMPLE_RATE,
+    ),
   );
   return {
     channelData: channels,
@@ -262,18 +325,26 @@ export function encodeWav(
 export function waveform(channels: Float32Array[], bars = 80): number[] {
   const samples = channels[0]?.length ?? 0;
   if (!samples || !Number.isInteger(bars) || bars < 1 || bars > 512) return [];
-  const peaks = Array.from({ length: bars }, (_, bar) => {
+  // Per-bar RMS above the quietest bar: peak levels made every bar look the
+  // same because the noise floor of a field recording peaks almost as high as
+  // the calls do.
+  const levels = Array.from({ length: bars }, (_, bar) => {
     const start = Math.floor((bar * samples) / bars);
     const end = Math.min(
       samples,
       Math.max(start + 1, Math.floor(((bar + 1) * samples) / bars)),
     );
-    let peak = 0;
+    let squares = 0;
     for (const channel of channels)
-      for (let index = start; index < end; index++)
-        peak = Math.max(peak, Math.abs(channel[index]));
-    return Number.isFinite(peak) ? peak : 0;
+      for (let index = start; index < end; index++) {
+        const sample = channel[index];
+        if (Number.isFinite(sample)) squares += sample * sample;
+      }
+    return Math.sqrt(squares / ((end - start) * channels.length));
   });
-  const max = Math.max(...peaks);
-  return max ? peaks.map((peak) => peak / max) : peaks;
+  const max = Math.max(...levels);
+  const floor = Math.min(...levels);
+  if (!max) return levels;
+  if (max === floor) return levels.map(() => 1);
+  return levels.map((level) => Math.sqrt((level - floor) / (max - floor)));
 }

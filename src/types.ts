@@ -21,6 +21,11 @@ export interface Recording {
   sampleRate?: number | null;
   certainty?: string | null;
   algorithm?: string | null;
+  probability?: number | null;
+  score?: number | null;
+  behaviorCode?: string | null;
+  behaviorConfidence?: number | null;
+  soundscapeId?: string | null;
   shortlist?: {
     speciesId: string;
     commonName: string;
@@ -130,7 +135,7 @@ export interface Capabilities {
   operations: Capability[];
 }
 
-export type ListeningMode = 'natural' | 'bat';
+export type ListeningMode = 'natural' | 'bat' | 'realtime';
 
 export interface Spectrogram {
   width: number;

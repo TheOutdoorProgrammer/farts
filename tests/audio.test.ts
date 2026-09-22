@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   clipBounds,
+  divideFrequency,
   encodeWav,
   inspectFlac,
   MAX_PCM_SAMPLES,
@@ -35,6 +36,53 @@ function flacHeader(sampleRate: number, samples: number, channels = 1) {
   );
   return bytes;
 }
+
+function upwardCrossingsPerSecond(audio: Float32Array, sampleRate: number) {
+  let crossings = 0;
+  for (let index = 1; index < audio.length; index++)
+    if (audio[index] >= 0 && audio[index - 1] < 0) crossings++;
+  return (crossings * sampleRate) / audio.length;
+}
+
+describe('real-time frequency division', () => {
+  it('keeps a 40 kHz call at its original duration while dividing it to 4 kHz', () => {
+    const output = preparePcm(
+      { channelData: [tone(40_000, 250_000, 0.05)], sampleRate: 250_000 },
+      'realtime',
+      null,
+      null,
+    );
+    expect(output.sampleRate).toBe(48_000);
+    expect(output.duration).toBeCloseTo(0.05);
+    const audio = output.channelData[0].subarray(200, 2_300);
+    expect(upwardCrossingsPerSecond(audio, output.sampleRate)).toBeCloseTo(
+      4_000,
+      -2,
+    );
+    expect(rms(audio)).toBeGreaterThan(0.2);
+  });
+
+  it('stays silent between calls instead of dividing background noise', () => {
+    const sampleRate = 250_000;
+    const quiet = new Float32Array(sampleRate / 100);
+    for (let index = 0; index < quiet.length; index++)
+      quiet[index] =
+        0.002 * Math.sin((2 * Math.PI * 30_000 * index) / sampleRate);
+    const call = tone(40_000, sampleRate, 0.01);
+    const input = new Float32Array(quiet.length * 2 + call.length);
+    input.set(quiet, 0);
+    input.set(call, quiet.length);
+    input.set(quiet, quiet.length + call.length);
+    const divided = divideFrequency(input, sampleRate);
+    expect(rms(divided.subarray(0, quiet.length - 100))).toBe(0);
+    expect(
+      rms(divided.subarray(quiet.length + 500, quiet.length + call.length)),
+    ).toBeGreaterThan(0.2);
+    expect(divideFrequency(new Float32Array(1_000), sampleRate)).toEqual(
+      new Float32Array(1_000),
+    );
+  });
+});
 
 describe('original-rate audio conversion', () => {
   it('makes 40 kHz bat calls audible at 4 kHz with ten times the duration', () => {
@@ -146,5 +194,23 @@ describe('original-rate audio conversion', () => {
       ),
     ).toEqual([-32768, 32767, 16384, -32768, 0, 0]);
     expect(waveform([new Float32Array(100)])).toEqual(new Array(80).fill(0));
+  });
+
+  it('draws the calls above the noise floor instead of a flat picket fence', () => {
+    const sampleRate = 48_000;
+    const noise = Float32Array.from({ length: sampleRate }, (_, index) =>
+      index % 7 === 0 ? 0.3 : 0.05 * Math.sin(index),
+    );
+    const call = tone(2_000, sampleRate, 0.25);
+    for (let index = 0; index < call.length; index++)
+      noise[sampleRate / 2 + index] += call[index];
+    const bars = waveform([noise], 8);
+    expect(bars).toHaveLength(8);
+    expect(Math.max(...bars)).toBe(1);
+    expect(Math.min(...bars.slice(0, 4))).toBeLessThan(0.15);
+    expect(Math.min(...bars.slice(4, 6))).toBeGreaterThan(0.9);
+    expect(
+      waveform([Float32Array.from({ length: 800 }, () => 0.5)], 4),
+    ).toEqual([1, 1, 1, 1]);
   });
 });
