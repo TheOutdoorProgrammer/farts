@@ -13,6 +13,9 @@ describe.skipIf(!fixtures)('real BirdWeather audio fixtures', () => {
     expect(audio.sampleRate).toBe(48_000);
     expect(audio.duration).toBeCloseTo(3.35);
     expect(audio.waveform.some((value) => value > 0)).toBe(true);
+    expect(audio.spectrogram.duration).toBeCloseTo(audio.sourceDuration);
+    expect(audio.spectrogram.maxFrequency).toBe(24_000);
+    expect(audio.spectrogram.data.some((value) => value > 0)).toBe(true);
     await writeFile(`${fixtures}/bird.wav`, new Uint8Array(audio.wav));
   }, 30_000);
 
@@ -25,6 +28,9 @@ describe.skipIf(!fixtures)('real BirdWeather audio fixtures', () => {
     expect(audio.duration).toBeCloseTo(audio.sourceDuration * 10);
     expect(audio.sourceDuration).toBeCloseTo(6, 0);
     expect(audio.waveform.some((value) => value > 0)).toBe(true);
+    expect(audio.spectrogram.duration).toBeCloseTo(audio.sourceDuration);
+    expect(audio.spectrogram.maxFrequency).toBe(125_000);
+    expect(audio.spectrogram.data.some((value) => value > 0)).toBe(true);
     await writeFile(`${fixtures}/bat.wav`, new Uint8Array(audio.wav));
   }, 30_000);
 

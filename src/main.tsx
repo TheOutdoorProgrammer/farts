@@ -3,10 +3,9 @@ import ReactDOM from 'react-dom/client';
 import '@fontsource-variable/bricolage-grotesque';
 import '@fontsource-variable/dm-sans';
 import './styles.css';
-import { initializeTelemetry, reportError } from './telemetry';
+import './journal.css';
+import { reportError } from './telemetry';
 import { App } from './App';
-
-initializeTelemetry();
 
 class ErrorBoundary extends React.Component<
   React.PropsWithChildren,
@@ -25,12 +24,9 @@ class ErrorBoundary extends React.Component<
         <main className="fatal-error">
           <h1>Let’s try that again.</h1>
           <p>
-            The page ran into a problem. Your recordings are still on
-            BirdWeather.
+            The page ran into a problem. Your station archive is still safe.
           </p>
-          <button onClick={() => window.location.reload()}>
-            Reload Better Birds
-          </button>
+          <button onClick={() => window.location.reload()}>Reload FARTS</button>
         </main>
       );
     return this.props.children;

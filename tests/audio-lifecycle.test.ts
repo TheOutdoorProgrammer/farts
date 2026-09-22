@@ -21,6 +21,15 @@ class TestWorker {
         sourceDuration: 1,
         sampleRate: 48_000,
         waveform: [1],
+        spectrogram: {
+          width: 1,
+          height: 1,
+          data: new Uint8Array([128]),
+          maxFrequency: 24_000,
+          duration: 1,
+          minDecibels: -100,
+          maxDecibels: 0,
+        },
       },
     });
   }
@@ -47,7 +56,10 @@ describe('audio worker lifecycle', () => {
     const second = prepareAudio(recording, 'bat');
     expect(TestWorker.instances).toHaveLength(1);
     TestWorker.instances[0].succeed();
-    expect((await first).blob.type).toBe('audio/wav');
+    const audio = await first;
+    expect(audio.blob.type).toBe('audio/wav');
+    expect(audio.spectrogram.maxFrequency).toBe(24_000);
+    expect(audio.spectrogram.data).toEqual(new Uint8Array([128]));
     expect(TestWorker.instances[0].terminate).toHaveBeenCalledOnce();
     expect(TestWorker.instances).toHaveLength(2);
     TestWorker.instances[1].succeed();

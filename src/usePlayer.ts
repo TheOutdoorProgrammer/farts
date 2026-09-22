@@ -3,7 +3,7 @@ import { prepareAudio } from './audio';
 import { reportError } from './telemetry';
 import type { ListeningMode, PreparedAudio, Recording } from './types';
 
-export function usePlayer() {
+export function usePlayer(stationName = 'Wildlife station') {
   const audioRef = useRef<HTMLAudioElement>(null);
   const requestRef = useRef<AbortController | null>(null);
   const objectUrl = useRef<string | null>(null);
@@ -101,11 +101,8 @@ export function usePlayer() {
           if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
               title: target.commonName,
-              artist: 'StoutBats',
-              album:
-                targetMode === 'bat'
-                  ? 'Better Birds · Bat listening'
-                  : 'Better Birds',
+              artist: stationName,
+              album: targetMode === 'bat' ? 'FARTS · Bat listening' : 'FARTS',
             });
           }
           await playNative();
@@ -120,7 +117,7 @@ export function usePlayer() {
         if (!controller.signal.aborted) setLoading(false);
       }
     },
-    [select, playNative],
+    [select, playNative, stationName],
   );
 
   const toggle = () => {

@@ -1,0 +1,48 @@
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: ghcr.io/theoutdoorprogrammer/farts
+  tag: latest
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+station:
+  id: ""
+  name: ""
+  description: ""
+
+publicUrl: ""
+faroUrl: ""
+extraEnv: []
+podAnnotations: {}
+
+persistence:
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  size: 10Gi
+
+service:
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""
+  tls: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+    ephemeral-storage: 1Gi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

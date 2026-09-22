@@ -24,9 +24,11 @@ export function ShareDialog({
   audioTab,
   onClose,
   prepare,
+  stationName,
 }: {
   recording: Recording;
   audioTab: boolean;
+  stationName: string;
   onClose: () => void;
   prepare: (
     recording: Recording,
@@ -107,8 +109,8 @@ export function ShareDialog({
         asFile && file
           ? { files: [file], title: recording.commonName }
           : {
-              title: `${recording.commonName} · Better Birds`,
-              text: `Listen to ${recording.commonName} at StoutBats.`,
+              title: `${recording.commonName} · FARTS`,
+              text: `Listen to ${recording.commonName} at ${stationName}.`,
               url,
             },
       );
@@ -161,7 +163,7 @@ export function ShareDialog({
           <strong>{recording.commonName}</strong>
           <span>
             {recordingDate(recording.timestamp)} ·{' '}
-            {recordingTime(recording.timestamp)} ET · StoutBats
+            {recordingTime(recording.timestamp)} · {stationName}
           </span>
         </div>
         <div className="share-tabs" role="group" aria-label="Share format">
@@ -263,7 +265,20 @@ export function ShareDialog({
                   Try again
                 </button>
               )}
+              {recording.audioUrl && (
+                <a
+                  className="secondary-button"
+                  href={`${recording.audioUrl}?download=1`}
+                  download
+                >
+                  <Download size={17} /> Original FLAC
+                </a>
+              )}
             </div>
+            <p className="original-audio-note">
+              The original FLAC preserves the full recording and sample rate,
+              including ultrasound.
+            </p>
           </div>
         )}
         <p className="share-notice" role="status">

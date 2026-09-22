@@ -25,21 +25,19 @@ export type TelemetryFailure = (typeof failures)[number];
 let telemetry: ReturnType<typeof initializeBrowserTelemetry> | undefined;
 const reportedErrors = new WeakSet<Error>();
 
-export function initializeTelemetry(): void {
-  if (
-    telemetry ||
-    typeof window === 'undefined' ||
-    !import.meta.env.VITE_FARO_URL
-  )
-    return;
+export function initializeTelemetry(config?: {
+  faroUrl: string;
+  version: string;
+}): void {
+  if (telemetry || typeof window === 'undefined' || !config?.faroUrl) return;
 
   try {
     const scriptPath = new URL(import.meta.url).pathname;
     telemetry = initializeBrowserTelemetry({
-      url: import.meta.env.VITE_FARO_URL,
+      url: config.faroUrl,
       app: {
-        name: 'Better Birds',
-        version: import.meta.env.VITE_APP_VERSION || 'development',
+        name: 'FARTS',
+        version: config.version || 'development',
         environment: import.meta.env.PROD ? 'production' : 'development',
       },
       // The shared filter treats parameterized paths as /{other}, never as recording IDs.

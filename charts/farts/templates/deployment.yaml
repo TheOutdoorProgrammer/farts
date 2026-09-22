@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "farts.fullname" . }}
+  labels:
+    {{- include "farts.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "farts.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "farts.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: farts
+          image: {{ printf "%s:%s%s" .Values.image.repository .Values.image.tag (ternary (printf "@%s" .Values.image.digest) "" (ne .Values.image.digest "")) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: FARTS_STATION_ID
+              value: {{ required "station.id must identify a public BirdWeather station" .Values.station.id | quote }}
+            - name: FARTS_STATION_NAME
+              value: {{ .Values.station.name | quote }}
+            - name: FARTS_STATION_DESCRIPTION
+              value: {{ .Values.station.description | quote }}
+            - name: FARTS_LISTEN_ADDR
+              value: ":8080"
+            - name: FARTS_DATA_DIR
+              value: /data
+            - name: FARTS_WEB_DIR
+              value: /app/dist
+            - name: FARTS_PUBLIC_URL
+              value: {{ .Values.publicUrl | quote }}
+            - name: FARTS_FARO_URL
+              value: {{ .Values.faroUrl | quote }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (include "farts.fullname" .) .Values.persistence.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

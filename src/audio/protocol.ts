@@ -1,4 +1,4 @@
-import type { ListeningMode } from '../types';
+import type { ListeningMode, Spectrogram } from '../types';
 
 export interface AudioRequest {
   audioUrl: string;
@@ -15,5 +15,6 @@ export type AudioResponse =
       sourceDuration: number;
       sampleRate: number;
       waveform: number[];
+      spectrogram: Spectrogram;
     }
   | { ok: false; message: string };

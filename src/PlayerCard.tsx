@@ -12,6 +12,7 @@ import {
 import { clock, recordingDate, recordingTime } from './format';
 import type { Player } from './usePlayer';
 import type { Recording } from './types';
+import { Spectrogram } from './Spectrogram';
 
 export function PhotoCredit({ recording }: { recording: Recording }) {
   if (!recording.imageCredit) return null;
@@ -54,6 +55,9 @@ export function PlayerCard({
   onShare: (recording: Recording, audio?: boolean) => void;
 }) {
   const { recording, prepared, playing, loading, time } = player;
+  const [visualization, setVisualization] = useState<
+    'spectrogram' | 'waveform'
+  >('spectrogram');
   if (!recording)
     return (
       <section
@@ -90,7 +94,7 @@ export function PlayerCard({
         <div className="recording-meta">
           <time dateTime={recording.timestamp}>
             {recordingDate(recording.timestamp)} ·{' '}
-            {recordingTime(recording.timestamp)} ET
+            {recordingTime(recording.timestamp)}
           </time>
           <span>
             {recording.classification === 'bat'
@@ -120,43 +124,6 @@ export function PlayerCard({
             </button>
           </div>
         )}
-        <div className="waveform" aria-hidden="true">
-          {prepared ? (
-            prepared.waveform.map((value, index) => (
-              <span
-                key={index}
-                className={
-                  index / prepared.waveform.length <= progress ? 'heard' : ''
-                }
-                style={{ height: `${Math.max(5, value * 100)}%` }}
-              />
-            ))
-          ) : (
-            <div
-              className={loading ? 'waveform-await loading' : 'waveform-await'}
-            >
-              <span />
-              {loading
-                ? 'Bringing the outside in…'
-                : 'Press play to load the waveform'}
-              <span />
-            </div>
-          )}
-        </div>
-        <div className="scrubber-row">
-          <span>{clock(time)}</span>
-          <input
-            aria-label="Recording position"
-            type="range"
-            min="0"
-            max={prepared?.duration || 1}
-            step="0.01"
-            value={time}
-            disabled={!prepared}
-            onChange={(event) => player.seek(Number(event.target.value))}
-          />
-          <span>{prepared ? clock(prepared.duration) : '–:––'}</span>
-        </div>
         <div className="player-actions">
           <button
             className="primary-button play-button"
@@ -184,6 +151,73 @@ export function PlayerCard({
             <Download size={19} />
           </button>
         </div>
+        <div
+          className="visualization-controls"
+          role="group"
+          aria-label="Sound visualization"
+        >
+          <button
+            aria-pressed={visualization === 'spectrogram'}
+            onClick={() => setVisualization('spectrogram')}
+          >
+            Spectrogram
+          </button>
+          <button
+            aria-pressed={visualization === 'waveform'}
+            onClick={() => setVisualization('waveform')}
+          >
+            Waveform
+          </button>
+        </div>
+        {visualization === 'spectrogram' ? (
+          <Spectrogram
+            data={prepared?.spectrogram}
+            time={time}
+            playbackDuration={prepared?.duration || 0}
+            loading={loading}
+            onSeek={player.seek}
+          />
+        ) : (
+          <div className="waveform" aria-hidden="true">
+            {prepared ? (
+              prepared.waveform.map((value, index) => (
+                <span
+                  key={index}
+                  className={
+                    index / prepared.waveform.length <= progress ? 'heard' : ''
+                  }
+                  style={{ height: `${Math.max(5, value * 100)}%` }}
+                />
+              ))
+            ) : (
+              <div
+                className={
+                  loading ? 'waveform-await loading' : 'waveform-await'
+                }
+              >
+                <span />
+                {loading
+                  ? 'Bringing the outside in…'
+                  : 'Press play to load the waveform'}
+                <span />
+              </div>
+            )}
+          </div>
+        )}
+        <div className="scrubber-row">
+          <span>{clock(time)}</span>
+          <input
+            aria-label="Recording position"
+            type="range"
+            min="0"
+            max={prepared?.duration || 1}
+            step="0.01"
+            value={time}
+            disabled={!prepared}
+            onChange={(event) => player.seek(Number(event.target.value))}
+          />
+          <span>{prepared ? clock(prepared.duration) : '–:––'}</span>
+        </div>
         {recording.classification === 'bat' && (
           <p className="mode-note">
             {player.mode === 'bat'
@@ -201,6 +235,25 @@ export function PlayerCard({
             BirdWeather has no audio for this detection.
           </p>
         )}
+        <details className="identification-details">
+          <summary>
+            {Math.round(recording.confidence * 100)}% identification confidence
+          </summary>
+          <p>
+            Automatic identification, not a confirmed sighting. Similar calls
+            may only be identifiable to a family or group.
+          </p>
+          {!!recording.shortlist?.length && (
+            <ul>
+              {recording.shortlist.slice(0, 5).map((candidate) => (
+                <li key={candidate.speciesId}>
+                  {candidate.commonName}{' '}
+                  <span>{Math.round(candidate.weight * 100)}%</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </details>
       </div>
       <div className="player-image">
         {recording.imageUrl ? (

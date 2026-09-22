@@ -36,6 +36,15 @@ function prepared(duration: number): PreparedAudio {
     sourceDuration: 1,
     sampleRate: 48_000,
     waveform: [0.5],
+    spectrogram: {
+      width: 1,
+      height: 1,
+      data: new Uint8Array([128]),
+      maxFrequency: 125_000,
+      duration: 1,
+      minDecibels: -100,
+      maxDecibels: 0,
+    },
   };
 }
 

@@ -4,7 +4,9 @@ Date: 2026-09-21
 
 ## Status
 
-Accepted.
+Superseded by [ADR-0002](0002-serve-one-station-from-a-persistent-self-hosted-archive.md).
+
+The original-rate FLAC decoding and audible bat playback decision remains valid.
 
 ## Context and Problem Statement
 

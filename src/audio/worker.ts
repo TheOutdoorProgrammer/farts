@@ -8,7 +8,9 @@ self.onmessage = async (event: MessageEvent<AudioRequest>) => {
       event.data,
     );
     const response: AudioResponse = { ok: true, ...result };
-    self.postMessage(response, { transfer: [result.wav] });
+    self.postMessage(response, {
+      transfer: [result.wav, result.spectrogram.data.buffer],
+    });
   } catch (error) {
     const response: AudioResponse = {
       ok: false,

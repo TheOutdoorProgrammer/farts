@@ -163,28 +163,38 @@ export function resample(
   return output;
 }
 
+export function clipPcm(
+  audio: PcmAudio,
+  start: number | null,
+  end: number | null,
+): PcmAudio {
+  const samples = audio.channelData[0]?.length ?? 0;
+  validateDimensions(audio.sampleRate, audio.channelData.length, samples);
+  if (audio.channelData.some((channel) => channel.length !== samples))
+    throw new Error('The audio channels have inconsistent lengths.');
+  const bounds = clipBounds(samples, audio.sampleRate, start, end);
+  return {
+    channelData: audio.channelData.map((channel) =>
+      channel.subarray(bounds.start, bounds.end),
+    ),
+    sampleRate: audio.sampleRate,
+  };
+}
+
 export function preparePcm(
   audio: PcmAudio,
   mode: 'natural' | 'bat',
   start: number | null,
   end: number | null,
 ) {
-  const samples = audio.channelData[0]?.length ?? 0;
-  validateDimensions(audio.sampleRate, audio.channelData.length, samples);
-  if (audio.channelData.some((channel) => channel.length !== samples))
-    throw new Error('The audio channels have inconsistent lengths.');
-  const bounds = clipBounds(samples, audio.sampleRate, start, end);
-  const sourceDuration = (bounds.end - bounds.start) / audio.sampleRate;
+  const source = clipPcm(audio, start, end);
+  const sourceDuration = source.channelData[0].length / source.sampleRate;
   const expansion = mode === 'bat' ? 10 : 1;
   if (sourceDuration * expansion > MAX_OUTPUT_SECONDS)
     throw new Error('This recording is too long for 10× bat playback.');
   // Expand at the original rate before filtering: downsampling first would erase the bat calls.
-  const channels = audio.channelData.map((channel) =>
-    resample(
-      channel.subarray(bounds.start, bounds.end),
-      audio.sampleRate / expansion,
-      OUTPUT_SAMPLE_RATE,
-    ),
+  const channels = source.channelData.map((channel) =>
+    resample(channel, source.sampleRate / expansion, OUTPUT_SAMPLE_RATE),
   );
   return {
     channelData: channels,

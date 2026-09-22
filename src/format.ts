@@ -1,4 +1,20 @@
-import type { Recording } from './types';
+import type { Recording, RuntimeConfig } from './types';
+
+let stationTimezone = 'UTC';
+let publicOrigin = '';
+export function configureFormat(config: RuntimeConfig) {
+  stationTimezone = config.timezone;
+  try {
+    publicOrigin = config.publicUrl
+      ? new URL(config.publicUrl).origin
+      : window.location.origin;
+  } catch {
+    publicOrigin = window.location.origin;
+  }
+}
+export function timezoneLabel() {
+  return stationTimezone.replaceAll('_', ' ');
+}
 
 export function clock(seconds: number) {
   const safe = Math.max(0, Number.isFinite(seconds) ? Math.floor(seconds) : 0);
@@ -10,7 +26,7 @@ export function recordingDate(
   options: Intl.DateTimeFormatOptions = {},
 ) {
   return new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
+    timeZone: stationTimezone,
     month: 'short',
     day: 'numeric',
     ...options,
@@ -45,6 +61,6 @@ export function audioFilename(recording: Recording, bat: boolean) {
 export function recordingLink(recording: Recording) {
   return new URL(
     `/recordings/${encodeURIComponent(recording.id)}`,
-    window.location.origin,
+    publicOrigin || window.location.origin,
   ).href;
 }

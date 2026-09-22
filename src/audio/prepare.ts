@@ -1,6 +1,9 @@
 import { FLACDecoder, type FLACDecodedAudio } from '@wasm-audio-decoders/flac';
+import { localMedia } from '../media';
 import type { AudioRequest } from './protocol';
+import { createSpectrogram } from './spectrogram';
 import {
+  clipPcm,
   encodeWav,
   inspectFlac,
   MAX_DOWNLOAD_BYTES,
@@ -52,18 +55,19 @@ export async function decodeRecording(
         'The recording is incomplete or damaged. Try another clip.',
       );
     }
-    const pcm = preparePcm(
+    const source = clipPcm(
       { channelData, sampleRate: info.sampleRate },
-      request.mode,
       request.startTime,
       request.endTime,
     );
+    const pcm = preparePcm(source, request.mode, null, null);
     return {
       wav: encodeWav(pcm.channelData, pcm.sampleRate),
       duration: pcm.duration,
       sourceDuration: pcm.sourceDuration,
       sampleRate: pcm.sampleRate,
       waveform: waveform(pcm.channelData),
+      spectrogram: createSpectrogram(source.channelData, source.sampleRate),
     };
   } finally {
     if (initialized) decoder.free();
@@ -71,43 +75,38 @@ export async function decodeRecording(
 }
 
 export async function fetchRecording(url: string): Promise<Uint8Array> {
-  const source = new URL(url);
-  if (
-    source.protocol !== 'https:' ||
-    source.hostname !== 'media.birdweather.com' ||
-    source.port ||
-    source.username ||
-    source.password ||
-    !source.pathname.startsWith('/soundscapes/') ||
-    !source.pathname.endsWith('.flac')
-  )
+  if (!localMedia(url))
     throw new Error(
-      'The recording URL is not a supported BirdWeather audio source.',
+      'The recording URL is not a supported station audio source.',
     );
+  const source = new URL(
+    url,
+    globalThis.location?.origin || 'http://localhost',
+  );
   let response: Response;
   try {
     response = await fetch(source, {
-      mode: 'cors',
-      credentials: 'omit',
+      mode: 'same-origin',
+      credentials: 'same-origin',
       redirect: 'error',
     });
   } catch {
     throw new Error(
-      'Could not reach BirdWeather audio. Check your connection and try again.',
+      'Could not reach the station archive. Check your connection and try again.',
     );
   }
   if (!response.ok)
     throw new Error(
       response.status === 404
-        ? 'BirdWeather no longer has this recording.'
-        : `BirdWeather could not load this recording (HTTP ${response.status}).`,
+        ? 'The station archive does not have this recording yet.'
+        : `The station could not load this recording (HTTP ${response.status}).`,
     );
   if (Number(response.headers.get('Content-Length')) > MAX_DOWNLOAD_BYTES) {
     await response.body?.cancel();
     throw new Error('This recording exceeds the 24 MB download limit.');
   }
   if (!response.body)
-    throw new Error('BirdWeather returned an empty recording.');
+    throw new Error('The station returned an empty recording.');
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;

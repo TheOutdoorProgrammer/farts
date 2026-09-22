@@ -48,6 +48,7 @@ function startNext() {
         sourceDuration: response.sourceDuration,
         sampleRate: response.sampleRate,
         waveform: response.waveform,
+        spectrogram: response.spectrogram,
       });
     };
     worker.onerror = () =>

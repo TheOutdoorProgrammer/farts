@@ -1,0 +1,120 @@
+name: Test and publish
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.27.1'
+      - uses: azure/setup-helm@bf6a7d304bc2fdb57e0331155b7ebf2c504acf0a
+        with:
+          version: v3.19.0
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+        env:
+          VITE_APP_VERSION: ${{ github.sha }}
+      - run: npm audit --omit=dev --audit-level=high
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+      - run: helm lint charts/farts --strict --set station.id=30605
+      - run: helm template farts charts/farts --set station.id=30605 --set ingress.enabled=true --set ingress.host=recordings.example.com > /tmp/farts.yaml
+      - run: FARTS_STATION_ID=30605 docker compose config --quiet
+
+  image:
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - name: Build image for security checks
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          load: true
+          platforms: linux/amd64
+          tags: farts:scan
+          build-args: VERSION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Scan runtime image
+        uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284
+        with:
+          image-ref: farts:scan
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish both architectures
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: |
+            ghcr.io/theoutdoorprogrammer/farts:latest
+            ghcr.io/theoutdoorprogrammer/farts:sha-${{ github.sha }}
+          build-args: VERSION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  chart:
+    needs: image
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@bf6a7d304bc2fdb57e0331155b7ebf2c504acf0a
+        with:
+          version: v3.19.0
+      - name: Publish installable chart
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          helm package charts/farts --version "0.1.0-sha.${GITHUB_SHA:0:12}" --app-version "$GITHUB_SHA" --destination /tmp/chart
+          helm push /tmp/chart/farts-*.tgz oci://ghcr.io/theoutdoorprogrammer/charts

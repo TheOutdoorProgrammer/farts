@@ -8,3 +8,6 @@ dist/
 coverage/
 test-results/
 .DS_Store
+data/
+/farts
+*.tgz

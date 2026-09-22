@@ -1,0 +1,22 @@
+station:
+  id: "30605"
+  name: StoutBats
+  description: Birdsong by day. Bat calls after dark.
+publicUrl: https://recordings.example.com
+persistence:
+  size: 10Gi
+ingress:
+  enabled: true
+  className: nginx
+  host: recordings.example.com
+  tls:
+    - secretName: recordings-tls
+      hosts:
+        - recordings.example.com
+extraEnv:
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: http://otel-collector.observability.svc.cluster.local:4318
+  - name: OTEL_EXPORTER_OTLP_PROTOCOL
+    value: http/protobuf
+  - name: OTEL_RESOURCE_ATTRIBUTES
+    value: deployment.environment.name=production

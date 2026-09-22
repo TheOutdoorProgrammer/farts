@@ -1,0 +1,31 @@
+services:
+  farts:
+    image: ghcr.io/theoutdoorprogrammer/farts:latest
+    build:
+      context: .
+      args:
+        VERSION: ${FARTS_VERSION:-development}
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      FARTS_STATION_ID: ${FARTS_STATION_ID:?Set your public BirdWeather station ID}
+      FARTS_STATION_NAME: ${FARTS_STATION_NAME:-}
+      FARTS_STATION_DESCRIPTION: ${FARTS_STATION_DESCRIPTION:-}
+      FARTS_PUBLIC_URL: ${FARTS_PUBLIC_URL:-http://localhost:8080}
+      FARTS_FARO_URL: ${FARTS_FARO_URL:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment.name=development}
+    volumes:
+      - recordings:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+volumes:
+  recordings:
