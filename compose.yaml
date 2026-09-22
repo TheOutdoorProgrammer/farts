@@ -1,10 +1,6 @@
 services:
   farts:
     image: ghcr.io/theoutdoorprogrammer/farts:latest
-    build:
-      context: .
-      args:
-        VERSION: ${FARTS_VERSION:-development}
     ports:
       - "127.0.0.1:8080:8080"
     environment:

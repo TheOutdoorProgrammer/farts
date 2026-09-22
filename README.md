@@ -41,7 +41,9 @@ helm upgrade --install farts ./charts/farts \
 
 Configure your ingress class, TLS and storage class in a values file. See [example values](deploy/values.example.yaml) and [chart defaults](charts/farts/values.yaml). The chart runs one non-root instance with a persistent volume and Recreate updates. The archive supports one writer; do not scale it horizontally.
 
-GitHub Actions tests the frontend, backend and Helm chart, checks dependencies and scans the runtime image before publication. Successful main builds publish `latest`, `sha-<full commit>`, and an OCI chart at `oci://ghcr.io/theoutdoorprogrammer/charts/farts`, version `0.1.0-sha.<first 12 commit characters>`. Pin a commit tag or digest for reproducible deployments.
+GitHub Actions tests the frontend, backend and Helm chart, checks dependencies and scans the runtime image. The release workflow uses [Quill](https://github.com/NerdsWhoFish/quill) to version and publish the application. GoReleaser builds Linux amd64 and arm64 binaries; Docker packages those artifacts with the already-built React UI. The image build checks the binary's embedded version and commit before accepting it.
+
+Dispatch the release workflow to publish a GitHub release, versioned images at `ghcr.io/theoutdoorprogrammer/farts`, and a matching OCI chart at `oci://ghcr.io/theoutdoorprogrammer/charts/farts`. Stable releases update `latest`; release candidates do not. Pin a version or digest for reproducible deployments. Each GitHub release also contains standalone archives with the binary and UI assets.
 
 ## Storage and caching
 
@@ -109,6 +111,8 @@ FARTS_STATION_ID=30605 go run ./cmd/farts
 ```
 
 Run `npm run dev` alongside Go for hot reload. Vite proxies API and media requests to `127.0.0.1:8080`.
+
+To build distributable artifacts locally, install GoReleaser 2.18.2 and run `make build`. Go artifacts go into `release/`, separate from Vite's `dist/` so GoReleaser's clean step cannot delete the UI. `make image` packages the snapshot as `farts:local` using Docker. The Dockerfile expects those artifacts and does not compile source. `farts version` prints the embedded version and source commit without opening the archive.
 
 ```sh
 go test -race ./...

@@ -1,0 +1,33 @@
+version: 2
+project_name: farts
+dist: release
+
+builds:
+  - id: farts
+    main: ./cmd/farts
+    binary: farts
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .FullCommit }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - formats: [tar.gz]
+    files:
+      - LICENSE
+      - README.md
+      - docs/api-coverage.md
+      - dist/**
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github-native
+
+release:
+  prerelease: auto

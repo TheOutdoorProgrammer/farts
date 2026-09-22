@@ -36,7 +36,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: farts
-          image: {{ printf "%s:%s%s" .Values.image.repository .Values.image.tag (ternary (printf "@%s" .Values.image.digest) "" (ne .Values.image.digest "")) | quote }}
+          image: {{ printf "%s:%s%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tag) (ternary (printf "@%s" .Values.image.digest) "" (ne .Values.image.digest "")) | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             allowPrivilegeEscalation: false

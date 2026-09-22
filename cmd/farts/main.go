@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 	_ "time/tzdata"
@@ -18,6 +20,7 @@ import (
 )
 
 var version = "development"
+var commit = "unknown"
 
 func main() {
 	if err := run(); err != nil {
@@ -27,6 +30,19 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) > 1 {
+		if os.Args[1] != "version" || len(os.Args) > 3 || (len(os.Args) == 3 && os.Args[2] != "--check") {
+			return errors.New("usage: farts [version [--check]]")
+		}
+		if len(os.Args) == 3 {
+			expectedVersion, expectedCommit := os.Getenv("VERSION"), os.Getenv("COMMIT")
+			if expectedVersion == "" || expectedCommit == "" || strings.TrimPrefix(expectedVersion, "v") != version || expectedCommit != commit {
+				return errors.New("binary version and commit do not match the requested image; rebuild release artifacts")
+			}
+		}
+		fmt.Printf("farts %s (%s)\n", version, commit)
+		return nil
+	}
 	cfg, err := config.Load(version)
 	if err != nil {
 		return err
@@ -52,7 +68,10 @@ func run() error {
 	app := server.New(cfg, store)
 	httpServer := &http.Server{Addr: cfg.ListenAddr, Handler: telemetry.Handler(app.Handler()), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 120 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	failed := make(chan error, 1)
-	go func() { slog.Info("FARTS started", "version", version); failed <- httpServer.ListenAndServe() }()
+	go func() {
+		slog.Info("FARTS started", "version", version, "commit", commit)
+		failed <- httpServer.ListenAndServe()
+	}()
 	select {
 	case <-ctx.Done():
 		closeCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

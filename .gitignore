@@ -1,5 +1,6 @@
 node_modules/
 dist/
+release/
 .wrangler/
 .worker-build/
 .env
@@ -8,6 +9,6 @@ dist/
 coverage/
 test-results/
 .DS_Store
-data/
+/data/
 /farts
 *.tgz

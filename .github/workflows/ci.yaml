@@ -1,25 +1,27 @@
-name: Test and publish
+name: CI
 
 on:
   pull_request:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
@@ -31,91 +33,90 @@ jobs:
       - uses: azure/setup-helm@bf6a7d304bc2fdb57e0331155b7ebf2c504acf0a
         with:
           version: v3.19.0
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - run: npm test
+      - run: npm run format:check
       - run: npm run build
-        env:
-          VITE_APP_VERSION: ${{ github.sha }}
       - run: npm audit --omit=dev --audit-level=high
       - run: go test -race ./...
       - run: go vet ./...
-      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+      - name: Check Go vulnerabilities for both architectures
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          for arch in amd64 arm64; do
+            GOOS=linux GOARCH="$arch" "$(go env GOPATH)/bin/govulncheck" ./...
+          done
       - run: helm lint charts/farts --strict --set station.id=30605
       - run: helm template farts charts/farts --set station.id=30605 --set ingress.enabled=true --set ingress.host=recordings.example.com > /tmp/farts.yaml
       - run: FARTS_STATION_ID=30605 docker compose config --quiet
-
-  image:
-    needs: test
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Build release artifacts without publishing
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94
         with:
-          persist-credentials: false
+          version: v2.18.2
+          args: release --snapshot --clean --skip=publish
+      - name: Read artifact version
+        id: artifacts
+        run: |
+          version=$(jq -er '.version | select(type == "string" and length > 0)' release/metadata.json)
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          for archive in release/farts_*.tar.gz; do
+            tar -tzf "$archive" > "$RUNNER_TEMP/archive-contents.txt"
+            grep -Fxq farts "$RUNNER_TEMP/archive-contents.txt"
+            grep -Fxq dist/index.html "$RUNNER_TEMP/archive-contents.txt"
+            grep -Eq '^dist/assets/.+\.js$' "$RUNNER_TEMP/archive-contents.txt"
+          done
       - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
-      - name: Build image for security checks
+      - name: Package AMD64 artifacts for security checks
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           context: .
           load: true
           platforms: linux/amd64
-          tags: farts:scan
-          build-args: VERSION=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Scan runtime image
+          tags: farts:scan-amd64
+          no-cache: true
+          build-args: |
+            VERSION=${{ steps.artifacts.outputs.version }}
+            COMMIT=${{ github.sha }}
+      - name: Scan AMD64 runtime image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           version: v0.74.0
-          image-ref: farts:scan
+          image-ref: farts:scan-amd64
           format: table
           exit-code: '1'
           severity: CRITICAL,HIGH
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish both architectures
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      - name: Verify packaged runtime and archive permissions
+        run: |
+          set -euo pipefail
+          trap 'docker rm -f farts-smoke >/dev/null 2>&1 || true; docker volume rm farts-smoke >/dev/null 2>&1 || true' EXIT
+          docker volume create farts-smoke
+          docker run -d --name farts-smoke --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges --tmpfs /tmp:size=64m \
+            -p 127.0.0.1:8080:8080 -v farts-smoke:/data \
+            -e FARTS_STATION_ID=1 -e FARTS_STATION_NAME=Smoke -e FARTS_TIMEZONE=UTC \
+            farts:scan-amd64
+          curl --retry 10 --retry-connrefused --retry-delay 1 --fail --silent http://127.0.0.1:8080/readyz
+          curl --fail --silent http://127.0.0.1:8080/ > "$RUNNER_TEMP/page.html"
+          grep -q 'Smoke' "$RUNNER_TEMP/page.html"
+          curl --fail --silent http://127.0.0.1:8080/og/station.png > "$RUNNER_TEMP/card.png"
+          test -s "$RUNNER_TEMP/card.png"
+      - name: Package ARM64 artifacts for security checks
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          provenance: mode=max
-          sbom: true
-          tags: |
-            ghcr.io/theoutdoorprogrammer/farts:latest
-            ghcr.io/theoutdoorprogrammer/farts:sha-${{ github.sha }}
-          build-args: VERSION=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  chart:
-    needs: image
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+          load: true
+          platforms: linux/arm64
+          tags: farts:scan-arm64
+          no-cache: true
+          build-args: |
+            VERSION=${{ steps.artifacts.outputs.version }}
+            COMMIT=${{ github.sha }}
+      - name: Scan ARM64 runtime image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
-          persist-credentials: false
-      - uses: azure/setup-helm@bf6a7d304bc2fdb57e0331155b7ebf2c504acf0a
-        with:
-          version: v3.19.0
-      - name: Publish installable chart
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          helm package charts/farts --version "0.1.0-sha.${GITHUB_SHA:0:12}" --app-version "$GITHUB_SHA" --destination /tmp/chart
-          helm push /tmp/chart/farts-*.tgz oci://ghcr.io/theoutdoorprogrammer/charts
+          version: v0.74.0
+          image-ref: farts:scan-arm64
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH

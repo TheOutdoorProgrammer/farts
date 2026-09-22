@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: What to cut
+        type: choice
+        default: Release
+        options: [Release, Release Candidate]
+      bump:
+        description: Which part of the version to bump
+        type: choice
+        default: patch
+        options: [patch, minor, major]
+      dry-run:
+        description: Build artifacts without publishing or tagging
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: farts-release
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yaml
+
+  release:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: write
+    outputs:
+      version: ${{ steps.quill.outputs.version }}
+      source-sha: ${{ github.sha }}
+      image-digest: ${{ steps.quill.outputs.image-digest }}
+      released: ${{ steps.quill.outputs.released }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.27.1'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
+      - name: Publish release artifacts
+        id: quill
+        uses: NerdsWhoFish/quill@e2b2edfcf07ab436b938aa5c3c213780b83cf034
+        with:
+          bump: ${{ inputs.bump }}
+          scope: ${{ inputs.scope }}
+          dry-run: ${{ inputs.dry-run }}
+          source-sha: ${{ github.sha }}
+          publish: goreleaser,docker
+          goreleaser-version: v2.18.2
+          docker-images: ghcr.io/theoutdoorprogrammer/farts
+          docker-platforms: linux/amd64,linux/arm64
+          docker-dry-run: 'false'
+          docker-cache: 'false'
+          docker-sbom: 'true'
+          docker-provenance: mode=max
+
+  chart:
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.release.outputs.source-sha }}
+          persist-credentials: false
+      - uses: azure/setup-helm@bf6a7d304bc2fdb57e0331155b7ebf2c504acf0a
+        with:
+          version: v3.19.0
+      - name: Publish the matching installable chart
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ needs.release.outputs.version }}
+          RELEASE_SHA: ${{ needs.release.outputs.source-sha }}
+          IMAGE_DIGEST: ${{ needs.release.outputs.image-digest }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_VERSION#v}"
+          printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          helm package charts/farts --version "$version" --app-version "$version" --destination "$RUNNER_TEMP/chart"
+          package="$RUNNER_TEMP/chart/farts-$version.tgz"
+          helm push "$package" oci://ghcr.io/theoutdoorprogrammer/charts
+          gh release upload "$RELEASE_VERSION" "$package" --clobber
+          {
+            printf 'Release: %s\n\n' "$RELEASE_VERSION"
+            printf 'Source: %s\n\n' "$RELEASE_SHA"
+            printf 'Image: ghcr.io/theoutdoorprogrammer/farts@%s\n\n' "$IMAGE_DIGEST"
+            printf 'Chart: oci://ghcr.io/theoutdoorprogrammer/charts/farts --version %s\n' "$version"
+          } >> "$GITHUB_STEP_SUMMARY"
