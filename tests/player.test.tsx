@@ -4,11 +4,15 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prepareAudio } from '../src/audio';
 import { silentClip } from '../src/audio/silence';
+import { reportError } from '../src/telemetry';
 import { usePlayer, type Player } from '../src/usePlayer';
 import type { PreparedAudio, Recording } from '../src/types';
 
 vi.mock('../src/audio', () => ({ prepareAudio: vi.fn() }));
-vi.mock('../src/telemetry', () => ({ reportError: vi.fn() }));
+vi.mock('../src/telemetry', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/telemetry')>()),
+  reportError: vi.fn(),
+}));
 
 const prepare = vi.mocked(prepareAudio);
 const recording: Recording = {
@@ -76,6 +80,7 @@ function Harness() {
 beforeEach(async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   prepare.mockReset();
+  vi.mocked(reportError).mockClear();
   let nextUrl = 0;
   vi.spyOn(URL, 'createObjectURL').mockImplementation(
     () => `blob:prepared-${++nextUrl}`,
@@ -111,6 +116,29 @@ afterEach(async () => {
 });
 
 describe('player request lifecycle', () => {
+  it('reports the native media error code without its private message', async () => {
+    prepare.mockResolvedValueOnce(prepared(10));
+    await act(async () => {
+      await player.listen(recording);
+    });
+    const audio = player.audioRef.current!;
+    vi.spyOn(audio, 'error', 'get').mockReturnValue({
+      code: 3,
+      message: 'SECRET https://recordings.example/private',
+    } as MediaError);
+    await act(async () => {
+      audio.dispatchEvent(new Event('error'));
+    });
+    expect(player.playing).toBe(false);
+    expect(player.notice).toBe(
+      'The audio player hit a problem. Reload the recording to try again.',
+    );
+    expect(reportError).toHaveBeenCalledExactlyOnceWith(
+      'audio_play',
+      'media_decode',
+    );
+  });
+
   it('keeps prepared audio when the browser requires a second tap to start playback', async () => {
     const audio = prepared(10);
     prepare.mockResolvedValueOnce(audio);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { prepareAudio } from './audio';
 import { silentClip } from './audio/silence';
-import { reportError } from './telemetry';
+import { mediaErrorFailure, reportError } from './telemetry';
 import type { ListeningMode, PreparedAudio, Recording } from './types';
 
 type Source = 'none' | 'unlock' | 'prepared';
@@ -230,7 +230,10 @@ export function usePlayer(stationName = 'Wildlife station') {
           'The audio player hit a problem. Reload the recording to try again.',
         );
         preparedRef.current = null;
-        reportError('audio_play', 'playback');
+        reportError(
+          'audio_play',
+          mediaErrorFailure(audioRef.current?.error?.code),
+        );
       },
     },
   };
