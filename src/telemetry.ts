@@ -14,6 +14,11 @@ const failures = [
   'unavailable',
   'decode',
   'playback',
+  'media_aborted',
+  'media_network',
+  'media_decode',
+  'media_unsupported',
+  'media_unknown',
   'permission',
   'unsupported',
   'unknown',
@@ -21,6 +26,23 @@ const failures = [
 
 export type TelemetryOperation = (typeof operations)[number];
 export type TelemetryFailure = (typeof failures)[number];
+
+export function mediaErrorFailure(
+  code: number | null | undefined,
+): TelemetryFailure {
+  switch (code) {
+    case 1:
+      return 'media_aborted';
+    case 2:
+      return 'media_network';
+    case 3:
+      return 'media_decode';
+    case 4:
+      return 'media_unsupported';
+    default:
+      return 'media_unknown';
+  }
+}
 
 let telemetry: ReturnType<typeof initializeBrowserTelemetry> | undefined;
 const reportedErrors = new WeakSet<Error>();

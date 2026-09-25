@@ -78,6 +78,32 @@ describe('runtime browser telemetry', () => {
     expect(captureError).toHaveBeenCalledTimes(1);
     expect(captureError.mock.calls[0][1]).toBe('audio_load.unknown');
   });
+  it.each([
+    [1, 'media_aborted'],
+    [2, 'media_network'],
+    [3, 'media_decode'],
+    [4, 'media_unsupported'],
+    [null, 'media_unknown'],
+    [undefined, 'media_unknown'],
+    [0, 'media_unknown'],
+    [5, 'media_unknown'],
+    [NaN, 'media_unknown'],
+    ['4', 'media_unknown'],
+    ['SECRET recording URL', 'media_unknown'],
+  ])('reports native media code %s as %s', async (code, failure) => {
+    const { initializeTelemetry, mediaErrorFailure, reportError } =
+      await import('../src/telemetry');
+    initializeTelemetry(runtime);
+    reportError('audio_play', mediaErrorFailure(code as never));
+    expect(captureError).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ message: 'Browser operation failed' }),
+      `audio_play.${failure}`,
+    );
+    expect(initializeBrowserTelemetry.mock.calls[0][0].operations).toContain(
+      `audio_play.${failure}`,
+    );
+    expect(JSON.stringify(captureError.mock.calls)).not.toContain('SECRET');
+  });
   it('keeps application operation independent of SDK failures', async () => {
     const { initializeTelemetry, reportError } =
       await import('../src/telemetry');
