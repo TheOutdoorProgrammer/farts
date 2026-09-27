@@ -77,6 +77,8 @@ The family pages show recordings, statistics, species, activity and station cond
 
 The public API is read-only and station-scoped. It does not accept arbitrary GraphQL, upstream URLs, other stations, uploads or configuration writes. Species reference data is limited to this station's species. Precise locations are hidden by default. Live subscriptions and private-station GraphQL authentication are not advertised as supported.
 
+Journal text search resolves matching names from the station's full species history, then filters detections before pagination. Classification, selected species and date filters still apply. A search with no matches returns an empty journal; searches matching more than 1,000 species ask for a more specific name.
+
 Share links use `/recordings/<detection-id>` with server-rendered Open Graph and Twitter cards showing the species, station, and recording date in the station's timezone. Cards and journal entries use credited species photos when available. Station cards choose a photographed species observed by that station. Station pages have their own preview cards, and page selections have shareable URLs. Set `FARTS_PUBLIC_URL` to your public origin so messaging apps can fetch the images without running JavaScript.
 
 ## Configuration

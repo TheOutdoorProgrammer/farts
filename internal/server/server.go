@@ -242,6 +242,8 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, context.Canceled):
 		return
+	case errors.Is(err, birdweather.ErrSearchTooBroad):
+		jsonError(w, 422, "Search matches too many species. Use a more specific name.")
 	case errors.Is(err, birdweather.ErrInvalidRequest):
 		jsonError(w, 400, "Unsupported or invalid request parameters.")
 	case errors.Is(err, archive.ErrNotFound):

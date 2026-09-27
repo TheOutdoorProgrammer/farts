@@ -6,7 +6,7 @@ The source references are BirdWeather's [REST documentation](https://app.birdwea
 
 ## Application responses
 
-- `GET /api/feed`: normalized recordings and station metadata, an opaque `nextCursor`, `fetchedAt`, and `stale`. `classification` accepts `all`, `bird`, or `bat`; `cursor` aliases GraphQL `after`. Other filters use the detection preset below.
+- `GET /api/feed`: normalized recordings and station metadata, an opaque `nextCursor`, `fetchedAt`, and `stale`. `classification` accepts `all`, `bird`, or `bat`; `cursor` aliases GraphQL `after`. `query` searches station species names (up to 240 bytes, surrounding whitespace ignored), then intersects matching IDs with any selected species before detection pagination. No matches return an empty feed. More than 1,000 matching species returns HTTP 422 asking for a narrower search. Public ID-list filters remain capped at 50; internally resolved search matches can exceed that limit. Other filters use the detection preset below.
 - `GET /api/recordings/:id`: one station-owned recording with REST soundscape and species enrichment. IDs are strings. `raw` retains upstream detection metadata after the HTTP layer applies privacy and media policies.
 - `GET /api/dashboard`: independent `counts`, `species`, `daily`, `timeOfDay`, `weather`, and `sensors` sections. Each has `data`, `fetchedAt`, `stale`, and an optional safe `error`. One unavailable capability does not remove the other sections. It accepts period parameters, `classification=all|bird|bat`, `speciesId`, and `limit` (default 20).
 

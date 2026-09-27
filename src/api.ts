@@ -135,6 +135,10 @@ export async function requestJson(
       credentials: 'same-origin',
       signal: controller.signal,
     });
+    if (response.status === 422 && path.startsWith('/api/feed?'))
+      throw new Error(
+        'Search matches too many species. Use a more specific name.',
+      );
     if (!response.ok)
       throw new Error(
         response.status === 404

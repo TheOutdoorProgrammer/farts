@@ -230,6 +230,12 @@ describe('local station API', () => {
     fetchMock.mockResolvedValueOnce(new Response('<html>broken</html>'));
     await expect(fetchFeed()).rejects.toThrow('invalid response');
   });
+  it('asks for a narrower search without exposing the error response body', async () => {
+    reply({ error: 'private upstream details' }, 422);
+    await expect(fetchFeed({ query: 'a' })).rejects.toThrow(
+      'Search matches too many species. Use a more specific name.',
+    );
+  });
 });
 
 describe('capability explorer', () => {
