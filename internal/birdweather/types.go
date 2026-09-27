@@ -12,6 +12,7 @@ var (
 	ErrInvalidRequest = errors.New("invalid BirdWeather request")
 	ErrUpstream       = errors.New("invalid BirdWeather response")
 	ErrWrongStation   = errors.New("recording does not belong to the configured station")
+	ErrSearchTooBroad = errors.New("search matches too many species")
 )
 
 type Request struct {

@@ -135,15 +135,18 @@ func arguments(parts ...string) string {
 	return "(" + strings.Join(nonempty, ",") + ")"
 }
 
-func (c *Client) GraphQL(ctx context.Context, operation string, params url.Values) (Response, error) {
-	var spec *graphqlOperation
+func findGraphQLOperation(operation string) *graphqlOperation {
 	for _, candidate := range graphqlOperations() {
 		if candidate.name == operation {
 			copy := candidate
-			spec = &copy
-			break
+			return &copy
 		}
 	}
+	return nil
+}
+
+func (c *Client) GraphQL(ctx context.Context, operation string, params url.Values) (Response, error) {
+	spec := findGraphQLOperation(operation)
 	if spec == nil {
 		return Response{}, fmt.Errorf("%w: unsupported GraphQL operation", ErrInvalidRequest)
 	}
@@ -151,6 +154,11 @@ func (c *Client) GraphQL(ctx context.Context, operation string, params url.Value
 	if err != nil {
 		return Response{}, err
 	}
+	return c.graphql(ctx, spec, query)
+}
+
+func (c *Client) graphql(ctx context.Context, spec *graphqlOperation, query url.Values) (Response, error) {
+	operation := spec.name
 	if operation == "species-search" {
 		response, err := c.REST(ctx, "species", "", query)
 		if err != nil {

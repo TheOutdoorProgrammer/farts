@@ -353,7 +353,7 @@ func (c *Client) Feed(ctx context.Context, params url.Values) (Response, error) 
 		}
 		delete(query, "classification")
 	}
-	response, err := c.GraphQL(ctx, "detections", query)
+	response, err := c.feedDetections(ctx, query)
 	if err != nil {
 		return Response{}, err
 	}
